@@ -1,0 +1,23 @@
+# Smoke run: prove training, masking, checkpointing and evaluation end to end (DESIGN §7, §9).
+# Skeleton for milestone 3; train.py fills in how each knob is consumed.
+name: qwen3-0.6b-smoke
+model: Qwen/Qwen3-0.6B
+dataset: fnl-es/muc4-chat
+train_docs: 100
+dev_docs: 50
+max_seq_len: 2048
+epochs: 1
+lr: 2.0e-4
+scheduler: cosine
+warmup_ratio: 0.03
+effective_batch_size: 16
+per_device_batch_size: 2
+lora:
+  r: 16
+  alpha: 16
+  dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+quantization: nf4
+generation:
+  max_new_tokens: 512
+wandb_project: muc4-event-extraction

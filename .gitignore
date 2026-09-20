@@ -1,0 +1,13 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local artifacts (corpus cache, prepared dataset, runs)
+data/
+outputs/
+wandb/
