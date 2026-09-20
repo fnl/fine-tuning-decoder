@@ -1,3 +1,6 @@
+# Environment setup
+.envrc
+
 # Python / uv
 __pycache__/
 *.py[cod]
