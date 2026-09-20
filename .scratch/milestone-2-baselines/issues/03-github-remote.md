@@ -1,7 +1,7 @@
 # 03 Create the public GitHub remote and push main
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 HITL: yes
 
@@ -27,3 +27,17 @@ Agent-driven steps (run only when the user says "go"):
 
 Resolved when `git ls-remote origin main` returns the local HEAD. Record: the
 repo URL and the pushed SHA.
+
+## Answer
+
+Resolved by the user 2026-09-20 (steps 1–2): `origin` =
+https://github.com/fnl/fine-tuning-decoder.git, `main` pushed at
+`9214c693b732adf81fa002d1e945879a0d085f37` (= local HEAD).
+`.envrc` is git-ignored; no token/key files tracked.
+
+Step 0 was **not** done: `.gitignore` line 14 `data/` still ignored
+`src/data/prepare.py`, so the pushed tree lacks the codec that tickets 07/09
+import (`render_target`, `canonical_events`, `SYSTEM_PROMPT`, `parse_target`).
+Agent changed the pattern to `/data/` (working tree, uncommitted); pending:
+`git add src/data .gitignore`, commit, push — and `docs/PROJECT_PLANNING.md`
+(step 3) is still untracked, user's call whether it goes in the same commit.

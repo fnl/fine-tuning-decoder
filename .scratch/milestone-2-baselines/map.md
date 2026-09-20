@@ -44,6 +44,10 @@ what follows the map is pure build.
 - [Which Qwen3-4B instruct checkpoint?](issues/04-base-model-id.md): `Qwen/Qwen3-4B-Instruct-2507` (Apache-2.0, 2025-08-05; Qwen3.5-4B rejected — VLM hybrid, Unsloth advises against QLoRA). Unsloth mirror `unsloth/Qwen3-4B-Instruct-2507` is T4-proven, but take the chat template from the official repo: the mirror's hybrid template injects an empty `<think>` block into assistant turns. No `enable_thinking` on 2507 (smoke `Qwen3-0.6B` still needs it off). Tokenizer byte-identical across the family, so `n_input_tokens`/`truncated` hold. Side finding: `.gitignore` `data/` also ignores `src/data/` — fix in ticket 03.
 - [Does vLLM run Qwen3-4B on a free Colab T4 today?](issues/05-vllm-on-t4.md): yes on paper — vLLM 0.29.0 from the cu129 wheel index, `dtype="half"`, `max_model_len=2560`, explicit `temperature=0.0` (else Qwen's generation_config temp 0.7 applies); T4/sm_75 is a supported floor with TRITON_ATTN. Memory fits (8 GB weights, ~12–15 concurrent docs), est. 6–12 min for 200 docs. Unsloth is not a baseline option (torch/transformers pins clash with vLLM; NF4 weights would change the baseline). Risk: no first-hand 0.29.0-on-Colab-T4 report; install replaces Colab's torch and needs a runtime restart. Fallbacks in order: `vllm==0.26.0` (pins Colab's torch 2.11), then batched `transformers.generate` (est. 10–25 min). Feeds ticket 06.
 
+- [W&B account](issues/01-wandb-account.md): done; key in git-ignored `.envrc` via direnv; project `muc4-event-extraction`, personal entity.
+- [Colab setup](issues/02-colab-setup.md): done; secrets `HF_TOKEN` + `WANDB_API_KEY` set; runtime Python 3.13.15, CUDA 12.8 — verify torch/driver in-notebook before picking the vLLM wheel index.
+- [GitHub remote](issues/03-github-remote.md): `github.com/fnl/fine-tuning-decoder`, `main` @ `9214c69`. Pending: `.gitignore` fixed to `/data/` (uncommitted), `src/data/` still needs add + commit + push.
+
 ## Not yet specified
 
 - Few-shot input budget: with three exemplars in context, how the truncated

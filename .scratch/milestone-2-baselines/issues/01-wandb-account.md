@@ -1,7 +1,7 @@
 # 01 Set up the W&B account and API key
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 HITL: yes
 
@@ -24,3 +24,12 @@ Checklist for the user:
 
 Resolved when step 4 succeeds. Record in the answer: entity name, the
 project URL.
+
+## Answer
+
+Resolved by the user 2026-09-20. Account created; `WANDB_API_KEY` lives in
+`.envrc` (git-ignored, loaded by direnv — not visible to shells that skip
+direnv, so the agent verifies with `direnv exec . uv run wandb login --verify`
+when needed). Project `muc4-event-extraction` under the personal entity.
+Entity name / project URL not recorded by the user; nothing in code depends on
+the entity (W&B picks the default entity from the key).

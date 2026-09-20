@@ -11,6 +11,6 @@ __pycache__/
 *.egg-info/
 
 # Local artifacts (corpus cache, prepared dataset, runs)
-data/
+/data/
 outputs/
 wandb/

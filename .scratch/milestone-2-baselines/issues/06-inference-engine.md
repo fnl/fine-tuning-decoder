@@ -1,7 +1,7 @@
 # 06 Inference engine for baselines
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 04, 05
 HITL: yes
 

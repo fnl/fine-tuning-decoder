@@ -1,7 +1,7 @@
 # 02 Set up Colab free tier with secrets
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 01
 HITL: yes
 
@@ -25,3 +25,13 @@ Checklist for the user:
    ticket 05/06 need them.
 
 Resolved when steps 2 and 4 succeed. Record: GPU seen, Python/CUDA versions.
+
+## Answer
+
+Resolved by the user 2026-09-20. Colab free tier on the user's Google
+account; `HF_TOKEN` and `WANDB_API_KEY` added as Colab Secrets with notebook
+access. Runtime seen: Python 3.13.15, nvcc CUDA 12.8 (V12.8.93, built
+2025-02-21). GPU not recorded (T4 assumed per free tier). Note: Python 3.13
+is newer than the 2026.07 snapshot in ticket 05 (3.12.13) — vLLM 0.29.0
+supports <3.15, so fine; check `torch.__version__` and `nvidia-smi` driver
+in-notebook before choosing the wheel index (ticket 06).
