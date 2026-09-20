@@ -4,11 +4,12 @@
 
 A learning project: fine-tune a small (≤4B) decoder LLM — Qwen3-4B-Instruct via
 Unsloth/TRL QLoRA on Google Colab — for document-level event extraction on the
-MUC-4 template-filling dataset. Core concepts: a *document* yields 0–N
-*templates* (incident type + 5 roles: PerpInd, PerpOrg, Target, Victim,
-Weapon); each role holds *entities*, each entity a list of coreferent
-*mentions*. The model emits templates as JSON; a ported GTT scorer computes F1.
-Full decisions in `docs/DESIGN.md`; next steps in `docs/PROJECT_PLANNING.md`.
+MUC-4 dataset. Core concepts: a *document* yields 0–N *events* (an event
+type + 5 roles: PerpInd, PerpOrg, Target, Victim, Weapon); each role holds
+*entities*, each entity a list of coreferent *mentions*. The model emits
+events as JSON; a ported GTT scorer computes F1. Vocabulary is fixed in
+`CONTEXT.md` (the corpus and GTT call an event a *template*). Full decisions
+in `docs/DESIGN.md`; next steps in `docs/PROJECT_PLANNING.md`.
 
 Python ≥3.11 managed with `uv`. CPU-only locally (data prep, scorer, tests);
 training and inference run on Colab/rented GPUs from `notebooks/colab.ipynb`.
