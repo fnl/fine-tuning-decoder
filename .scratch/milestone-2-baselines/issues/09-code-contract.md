@@ -106,3 +106,5 @@ changes.
 - Docs: README "Running a baseline" (generate → eval `--wandb`, three
   configs); DESIGN §3 tree gains `generate.py`; DESIGN §5 names
   `Qwen3-4B-Instruct-2507` and drops the "check the Unsloth list" line.
+
+**Amendment 2026-09-20 (domain modeling)**: the `input_budget` parameter is named `max_input_tokens` in the spec — `CONTEXT.md` reserves *input budget* for the per-example limit applied at data preparation.

@@ -38,6 +38,6 @@ https://github.com/fnl/fine-tuning-decoder.git, `main` pushed at
 Step 0 was **not** done: `.gitignore` line 14 `data/` still ignored
 `src/data/prepare.py`, so the pushed tree lacks the codec that tickets 07/09
 import (`render_target`, `canonical_events`, `SYSTEM_PROMPT`, `parse_target`).
-Agent changed the pattern to `/data/` (working tree, uncommitted); pending:
-`git add src/data .gitignore`, commit, push — and `docs/PROJECT_PLANNING.md`
-(step 3) is still untracked, user's call whether it goes in the same commit.
+Agent changed the pattern to `/data/`; the user committed it with `src/data`
+in `17639f2` (2026-09-20). `docs/PROJECT_PLANNING.md` (step 3) is still
+untracked — user's call.

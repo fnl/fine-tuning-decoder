@@ -43,12 +43,12 @@ always-empty baseline runs locally and proves the W&B path first.
 9. AS A researcher, I WANT a predictions table (docid, gold, output, parse ok, cut off, event counts) in the run, SO THAT I can browse failures in the W&B UI sorted by count mismatch.
 10. AS A researcher, I WANT the Colab cell to end with the run URL, SO THAT the result is one click away.
 11. AS A developer, I WANT the generation core to take an engine as a plain callable, SO THAT milestone 3 can pass an in-process model without touching the rendering or bookkeeping.
-12. AS A developer, I WANT the always-empty baseline to be an engine rather than a special path, SO THAT it exercises the same rendering, budget check, JSONL writing and scoring as the GPU runs.
+12. AS A developer, I WANT the always-empty baseline to be an engine rather than a special path, SO THAT it exercises the same rendering, input-limit check, JSONL writing and scoring as the GPU runs.
 13. AS A developer, I WANT inputs rendered with the official Qwen chat template and `enable_thinking=False`, SO THAT token counts agree with the dataset's and no `<think>` block ever appears, whichever checkpoint mirror serves the weights.
-14. AS A developer, I WANT generation to fail loudly naming the docid if any rendered input exceeds the input budget, SO THAT the dataset's `truncated` flag stays the only truncation and nothing is silently cut twice.
+14. AS A developer, I WANT generation to fail loudly naming the docid if any rendered input exceeds what the engine can take, SO THAT the dataset's `truncated` flag stays the only truncation and nothing is silently cut twice.
 15. AS A developer, I WANT the few-shot turns spliced verbatim from the train split by docid, SO THAT exemplar targets cannot drift from the codec that produced them.
 16. AS A developer, I WANT GPU-only imports to happen lazily inside the vLLM engine, SO THAT the module imports, type-checks and tests on a CPU-only machine.
-17. AS A developer, I WANT CPU tests for rendering, the budget check, the constant engine, the CLI's files and the W&B payload, SO THAT the pipeline is verified before a GPU is ever rented.
+17. AS A developer, I WANT CPU tests for rendering, the input-limit check, the constant engine, the CLI's files and the W&B payload, SO THAT the pipeline is verified before a GPU is ever rented.
 18. AS A developer, I WANT the scorer's CLI unchanged when `--wandb` is absent, SO THAT existing documentation, tests and habits keep working.
 19. AS A developer, I WANT `--limit N` on the generation CLI, SO THAT a five-document smoke run precedes every full run in the notebook.
 20. AS A Colab user, I WANT the notebook to clone the repo at a ref I type into a form field, SO THAT I can run any commit without editing code cells.
@@ -76,7 +76,7 @@ always-empty baseline runs locally and proves the W&B path first.
 
 ### Few-shot input budget (issue 06, fog graduated)
 
-- One input budget only: the dataset's `truncated` flag from data preparation. The generation core counts each rendered input's tokens and raises, naming the first offending docid, if any exceeds `max_model_len − max_new_tokens` (= 2560). No second truncation layer, no per-document exemplar dropping. `n_truncated` is reported from the dataset flag.
+- One input budget only: the dataset's `truncated` flag from data preparation. The engine's limit on a rendered input, `max_input_tokens = max_model_len − max_new_tokens` (= 2560), is *not* a second budget (the glossary reserves *input budget* for the per-example limit): the generation core counts each rendered input's tokens and raises, naming the first offending docid, if any exceeds it. No second truncation layer, no per-document exemplar dropping. `n_truncated` is reported from the dataset flag.
 - Measured (official tokenizer, dev split): longest zero-shot input 1375 tokens; longest 3-shot input 1857 tokens with the chosen exemplars; 0 documents over budget; ~700 tokens of headroom.
 
 ### Exemplars (issue 07, from the prototype `prototype_exemplars.py`)
@@ -101,7 +101,7 @@ always-empty baseline runs locally and proves the W&B path first.
   Engine = Callable[[list[str]], list[GenerationResult]]
 
   def render_inputs(examples, exemplars, tokenizer) -> list[str]
-  def generate(examples, engine, tokenizer, exemplars=(), *, input_budget: int) -> list[Row]
+  def generate(examples, engine, tokenizer, exemplars=(), *, max_input_tokens: int) -> list[Row]
       # Row = {"docid": str, "output": str, "cut_off": bool}
   def vllm_engine(model, *, max_model_len, max_new_tokens) -> Engine   # lazy vllm/torch imports
   def constant_engine() -> Engine                                      # "[]", "stop" for every input
@@ -110,7 +110,7 @@ always-empty baseline runs locally and proves the W&B path first.
   `examples` and `exemplars` are dataset rows (`docid, messages, n_input_tokens, truncated`). Rows carry only `docid`, `output` (the scorer's existing contract) and `cut_off`; counts live in the metadata sidecar.
 - Few-shot assembly lives in `generate`; the data codec stays ignorant of shots.
 - CLI: `--config <yaml>` (required), `--split` (default `dev`), `--limit N` (first N rows), `--out` (default `outputs/<name>`). Loads the dataset from the Hub, exemplars from its `train` split by docid, and writes `<split>.jsonl` plus `meta.json` with: `model`, `engine`, `engine_version` (`"vllm 0.29.0"` / `"constant"`), `git_sha`, `git_dirty`, `dataset_revision` (Hub commit of the dataset), `split`, `gpu` (device name or `"cpu"`), `n_docs`, `n_truncated`, `n_cut_off`, `wall_seconds`.
-- The always-empty baseline is `engine: constant` in the same CLI; `[]` is hardcoded. Its YAML still names the model because rendering and the budget check need the tokenizer — deliberately the same path as the GPU runs.
+- The always-empty baseline is `engine: constant` in the same CLI; `[]` is hardcoded. Its YAML still names the model because rendering and the input-limit check need the tokenizer — deliberately the same path as the GPU runs.
 
 ### Experiment YAMLs (issue 09)
 
@@ -175,7 +175,7 @@ under `tests/fixtures/corpus`, module-scoped `tokenizer` fixture with the
 
 Seams, agreed with the user:
 
-1. **`generate(examples, engine, tokenizer, exemplars, input_budget)`** — the main seam. Examples built from the fixture corpus, a fake engine that records the inputs it received and returns canned results, the real tokenizer (`tokenizer` marker). Verifies zero-shot and 3-shot rendering (system prompt first, exemplar turns verbatim and in order, target document last, generation prompt at the end, no `<think>`), `cut_off` from the finish reason, and that an over-budget input raises naming the docid. `render_inputs` is not tested on its own.
+1. **`generate(examples, engine, tokenizer, exemplars, max_input_tokens)`** — the main seam. Examples built from the fixture corpus, a fake engine that records the inputs it received and returns canned results, the real tokenizer (`tokenizer` marker). Verifies zero-shot and 3-shot rendering (system prompt first, exemplar turns verbatim and in order, target document last, generation prompt at the end, no `<think>`), `cut_off` from the finish reason, and that an over-budget input raises naming the docid. `render_inputs` is not tested on its own.
 2. **`constant_engine()`** — returns `[]` with finish reason `stop` for every input; no tokenizer.
 3. **generation CLI** — one run with `engine: constant` and `--limit 3` into a temporary directory; checks the JSONL rows and every `meta.json` field. Needs the Hub dataset and tokenizer → `tokenizer` marker.
 4. **`flatten` and the W&B payload builder** — pure functions over a scorer result from hand-built pairs: exact key names, the two sidecar counts, the config stamps. `wandb.init` is never called in tests; the `--wandb` branch of the scorer CLI is validated by the local always-empty run.
@@ -197,6 +197,6 @@ Run `uv run mypy src`, `uv run ruff check .`, and `uv run pytest` (full suite on
 
 - **Done criterion**: three runs in `muc4-event-extraction` on the 200 dev documents — `qwen3-4b-zero-shot`, `qwen3-4b-3-shot`, `always-empty` — each with config, 57 metrics, the `predictions` artifact and table; the always-empty run produced locally on CPU first.
 - **Order of work that de-risks earliest**: (1) `.gitignore` fix + `src/data` commit; (2) `generate` core + constant engine + tests; (3) `eval --wandb` + `flatten` + tests, then the local always-empty run to prove the W&B path; (4) `vllm_engine`; (5) YAMLs; (6) notebook + filter + test; (7) docs.
-- **Vocabulary**: this spec uses *exemplar* for a train example spliced into the input as a demonstration turn pair. `CONTEXT.md` does not define it yet; adding it (via the domain-modeling skill) is a small follow-up, not part of this spec.
+- **Vocabulary**: *exemplar*, *engine* and the sharpened *input* are defined in `CONTEXT.md` (added 2026-09-20). The engine's per-input limit is deliberately named `max_input_tokens`, not "input budget", which the glossary reserves for the per-example limit applied at data preparation.
 - **Facts worth re-checking in the notebook before trusting the T4 plan**: Colab's live torch version and driver (ticket 05's snapshot was 2026.07); no first-hand report of vLLM 0.29.0 on a Colab T4 exists — hence the fallback order.
 - Ticket 01's entity name/project URL and ticket 02's GPU name were not recorded by the user; nothing depends on them.

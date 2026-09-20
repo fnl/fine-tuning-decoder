@@ -106,9 +106,15 @@ events.
 _Avoid_: military rule, negative rule
 
 **Input**:
-Everything the model sees before generating: the system prompt and user
-message as rendered by the chat template.
+Everything the model sees before generating: the system prompt, any
+exemplars, and the document's user message, as rendered by the chat template.
 _Avoid_: prompt, context, query
+
+**Exemplar**:
+A train example whose document and target are placed in the input as a
+demonstration turn pair; a few-shot baseline uses the same fixed exemplars in
+every input.
+_Avoid_: shot, demonstration, few-shot example, in-context example
 
 **Input budget**:
 The maximum number of input tokens an example may have.
@@ -230,6 +236,12 @@ _Avoid_: tiny model, test model
 A result obtained without fine-tuning: zero-shot, few-shot, or the trivial
 always-empty prediction.
 _Avoid_: control, reference run
+
+**Engine**:
+The component that turns rendered inputs into outputs: an inference server
+on a GPU, an in-process model, or the constant engine that answers `[]` for
+the always-empty baseline.
+_Avoid_: backend, generator, inference server, model (for the concept)
 
 **Adapter**:
 The LoRA weights produced by fine-tuning, published on their own and never
