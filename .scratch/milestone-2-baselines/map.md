@@ -48,14 +48,19 @@ what follows the map is pure build.
 - [Colab setup](issues/02-colab-setup.md): done; secrets `HF_TOKEN` + `WANDB_API_KEY` set; runtime Python 3.13.15, CUDA 12.8 — verify torch/driver in-notebook before picking the vLLM wheel index.
 - [GitHub remote](issues/03-github-remote.md): `github.com/fnl/fine-tuning-decoder`, `main` @ `9214c69`. Pending: `.gitignore` fixed to `/data/` (uncommitted), `src/data/` still needs add + commit + push.
 
+- [Inference engine](issues/06-inference-engine.md): vLLM 0.29.0 only (cu129 wheels, pinned, notebook-only), `dtype=half`, greedy, 512 new tokens, **`max_model_len=3072`** (3-shot needs it: dev max input 1375 + ~700–1000 exemplar tokens), T4 knobs hardcoded in `vllm_engine()`; pre-render with official tokenizer + `enable_thinking=False`; `Engine = Callable[[list[str]], list[GenerationResult]]` with `vllm_engine`/`constant_engine`; over-budget input fails loudly, no second truncation; finish reason recorded for cut-off outputs. Fallback if install breaks: vllm 0.26.0, then a ticket for HF generate.
+
+- [3-shot exemplars](issues/07-exemplars.md): `DEV-MUC3-0512` (empty) → `DEV-MUC3-0126` (1 attack, all 5 roles) → `DEV-MUC3-0094` (2 bombings), spliced verbatim from the train split by docid; prefix 665 tokens, dev 3-shot input max 1857 < 2560 budget, 0 over → `max_model_len=3072` confirmed. Prototype: `prototype_exemplars.py` in this directory.
+
+- [W&B schema](issues/08-wandb-logging-schema.md): `eval.py --wandb` owns the run; `generate.py` writes `outputs/<name>/<split>.jsonl` + `meta.json` (engine_version, git_sha/dirty, dataset_revision, gpu, n_docs/n_truncated/n_cut_off, wall_seconds). config = YAML verbatim + stamps; metrics = `flatten(score())` with `/` (55) + `diagnostics/n_truncated`, `n_cut_off`, one `run.log`; artifact `<name>-<split>` type `predictions`; Table `predictions` (docid, gold, output, parse_ok, cut_off, n_gold_events, n_pred_events); name/tags from YAML, `job_type=eval`; `run.url` printed last.
+
+- [Code contract](issues/09-code-contract.md): `src/generate.py` — `Engine = Callable[[list[str]], list[GenerationResult]]`, `render_inputs` / `generate(examples, engine, tokenizer, exemplars, input_budget)` → rows `{docid, output, cut_off}`, `vllm_engine` / `constant_engine`; CLI `python -m generate --config --split --limit --out`; YAML keys name/tags/model/dataset/engine/exemplars/generation{max_new_tokens,max_model_len}/wandb_project; `eval.py` gains `--config`/`--wandb`, `--gold` unchanged (notebook dumps dev via `to_json`); `requires-python` → `<3.14`; README + DESIGN §3/§5 updates.
+
+- [Notebook layout](issues/10-notebook-layout.md): 8 cells — runtime check, clone@`REF` form field, guarded vLLM + `pip install -e .` with auto-restart, secrets → env, gold dump via `to_json`, `--limit 5` smoke, zero-shot cell, 3-shot cell (each `generate && eval --wandb`). nbstripout git filter via `.gitattributes` (dev dep, `--install` per clone); nbformat CPU test (no outputs, configs exist); README Colab link.
+
 ## Not yet specified
 
-- Few-shot input budget: with three exemplars in context, how the truncated
-  document policy (DESIGN §6: truncate input, report count) interacts with
-  the engine's max context — sharpens once the engine and exemplars are chosen.
-- Reproducibility fields on a run: commit SHA, config hash, engine version —
-  what exactly the notebook stamps into W&B config; sharpens with the logging
-  schema.
+- (none — both fogs graduated in tickets 06 and 08)
 
 ## Out of scope
 

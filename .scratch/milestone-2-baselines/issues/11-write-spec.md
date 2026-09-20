@@ -1,7 +1,7 @@
 # 11 Write the milestone-2 spec
 
 Type: task
-Status: open
+Status: claimed
 Blocked by: 09, 10
 HITL: yes
 
