@@ -107,3 +107,19 @@ share an env with vLLM ≥0.27 and always brings the training stack.
 - No first-hand vLLM 0.29.0 + Colab T4 run found; nearest: 0.28.0 on sm_75, 0.19.0/0.21.0 on Colab/Kaggle T4.
 - Install time, KV budget and all throughput figures are estimates.
 - `transformers>=5.10.4` may clash with other preinstalled Colab packages (unverified).
+
+## Comments
+
+**2026-09-21 (first-hand, free Colab T4):** the install line
+`pip install vllm==0.29.0 --extra-index-url https://wheels.vllm.ai/0.29.0/cu129 --extra-index-url https://download.pytorch.org/whl/cu129`
+from `notebooks/colab.ipynb` installs cleanly, followed by `pip install -e .`
+and the runtime restart. This closes the "no first-hand 0.29.0 + Colab T4
+report" caveat for the *install*; the `vllm==0.26.0` fallback is not needed
+for it. Still unverified: generation on sm_75 (TRITON_ATTN, `dtype="half"`),
+install time and throughput. The notebook did not run through on that
+attempt, but not because of vLLM: the smoke cell failed with
+`FileNotFoundError: configs/qwen3-4b-zero-shot.yaml` — the runtime restart
+resets the working directory to `/content`, and only the clone cell changed
+it. Fixed in the notebook by prefixing every post-restart cell with
+`%cd /content/fine-tuning-decoder` and chaining the smoke cell's commands
+with `&&`. Generation on the T4 remains the next thing to verify.
