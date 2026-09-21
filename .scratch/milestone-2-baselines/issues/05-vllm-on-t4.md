@@ -131,3 +131,21 @@ other preinstalled Colab packages" caveat is confirmed: `from vllm import LLM`
 version 12.8` (Colab's torchaudio predates the torch swap). Fix in the
 notebook: `pip uninstall --yes torchaudio` right after the vLLM install;
 transformers imports it only when present and nothing here needs audio.
+
+**2026-09-21, third attempt (run by the agent through Claude in Chrome) —
+generation verified, ticket fully closed.** Free Colab T4, driver 580.82.07
+(CUDA 13.0), Python 3.13.15, torch 2.13.0+cu129 after the swap. With
+`torchaudio` removed, `generate --limit 5` ran end to end: architecture
+`Qwen3ForCausalLM`, bf16 cast to fp16, attention backend `TRITON_ATTN`
+(FA2 refused on compute capability 7.5, FlashInfer sampler falls back too),
+weights download 103 s, model load 7.64 GiB in 145 s total, engine init
+27 s, KV cache 4.8 GiB = 34,928 tokens = 11.4 concurrent 3072-token
+requests. 5 documents generated in 12 s (input 186 tok/s, output 46 tok/s),
+0 cut off. The estimates in the answer (12–15 concurrent docs, ~8 GB
+weights) held; the throughput and install figures are no longer estimates.
+Caveat found on the way: a runtime where vLLM was installed *before* the
+torchaudio fix keeps the broken torchaudio, so the notebook now uninstalls
+it unconditionally, outside the install guard.
+Full runs the same evening: zero-shot 200 dev documents ≈ 4.5 min wall
+(W&B `meduja8a`), 3-shot ≈ 5 min (`t9nr1gsf`), each including ~1 min model
+load from the cached weights; 3 and 1 cut-off outputs respectively.
