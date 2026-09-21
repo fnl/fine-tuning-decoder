@@ -1,0 +1,12 @@
+# 3-shot baseline: the system prompt plus three fixed train exemplars spliced in as turn pairs:
+# an irrelevant document, one attack with every role, two bombings sharing roles.
+name: qwen3-4b-3-shot
+tags: [baseline, 3-shot]
+model: Qwen/Qwen3-4B-Instruct-2507
+dataset: fnl-es/muc4-chat
+engine: vllm
+exemplars: [DEV-MUC3-0512, DEV-MUC3-0126, DEV-MUC3-0094]
+generation:
+  max_new_tokens: 512
+  max_model_len: 3072
+wandb_project: muc4-event-extraction

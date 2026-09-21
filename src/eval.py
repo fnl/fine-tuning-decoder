@@ -19,11 +19,14 @@ import itertools
 import json
 import re
 import string
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from data.prepare import ROLES, Event, parse_target
+import yaml
+
+from data.prepare import ROLES, Event, parse_target, render_target
 
 Result = dict[str, Any]
 
@@ -248,16 +251,20 @@ def read_gold(path: Path) -> dict[str, list[Event]]:
     return golds
 
 
+def read_rows(path: Path) -> list[dict[str, Any]]:
+    """The rows of an outputs JSONL file: ``{"docid": ..., "output": <raw model output>, ...}``."""
+    with path.open(encoding="utf-8") as f:
+        return [json.loads(line) for line in f]
+
+
 def read_predictions(path: Path) -> tuple[dict[str, list[Event]], set[str]]:
     """Predictions from JSONL rows ``{"docid": ..., "output": <raw model output>}``."""
     preds = {}
     parse_failures = set()
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            row = json.loads(line)
-            preds[row["docid"]], parse_ok = parse_target(row["output"])
-            if not parse_ok:
-                parse_failures.add(row["docid"])
+    for row in read_rows(path):
+        preds[row["docid"]], parse_ok = parse_target(row["output"])
+        if not parse_ok:
+            parse_failures.add(row["docid"])
     return preds, parse_failures
 
 
@@ -274,13 +281,108 @@ def format_result(result: Result) -> str:
     return "\n".join(lines)
 
 
+def flatten(result: Result) -> dict[str, float | int]:
+    """The result as one flat mapping: ``micro_avg/f1``, ``PerpInd/p_num``, ``diagnostics/n_docs``, …"""
+    return {
+        f"{section}/{name}": value
+        for section, values in result.items()
+        for name, value in values.items()
+    }
+
+
+# Columns of the ``predictions`` table logged with a run.
+TABLE_COLUMNS = ("docid", "gold", "output", "parse_ok", "cut_off", "n_gold_events", "n_pred_events")
+
+# Fields of ``meta.json`` stamped into the run config beside the experiment YAML.
+CONFIG_STAMPS = ("git_sha", "git_dirty", "dataset_revision", "engine_version", "split", "gpu")
+
+
+@dataclass
+class WandbPayload:
+    """What one evaluation logs to W&B: the run config, its metrics and the predictions table."""
+
+    config: dict[str, Any]
+    metrics: dict[str, float | int]
+    table: list[list[Any]]
+
+
+def wandb_payload(
+    config: Mapping[str, Any],
+    meta: Mapping[str, Any],
+    result: Result,
+    rows: Sequence[Mapping[str, Any]],
+    golds: Mapping[str, list[Event]],
+) -> WandbPayload:
+    """Build the run payload from the experiment YAML, the generation sidecar, the score and the rows."""
+    metrics = flatten(result)
+    metrics["diagnostics/n_truncated"] = meta["n_truncated"]
+    metrics["diagnostics/n_cut_off"] = meta["n_cut_off"]
+    table = []
+    for row in rows:
+        gold = golds[row["docid"]]
+        pred, parse_ok = parse_target(row["output"])
+        table.append(
+            [
+                row["docid"],
+                render_target(gold),
+                row["output"],
+                parse_ok,
+                row["cut_off"],
+                len(gold),
+                len(pred),
+            ]
+        )
+    return WandbPayload(
+        config={**config, **{key: meta[key] for key in CONFIG_STAMPS}}, metrics=metrics, table=table
+    )
+
+
+def log_run(config_path: Path, pred: Path, result: Result, golds: Mapping[str, list[Event]]) -> str:
+    """Log one evaluation as a W&B run and return its URL.
+
+    The run carries the experiment YAML plus provenance stamps as config, the
+    flat metrics, the ``predictions`` table and the output directory next to
+    ``pred`` (``<split>.jsonl`` + ``meta.json``) as a ``predictions`` artifact.
+    """
+    import wandb
+
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    out_dir = pred.parent
+    meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
+    payload = wandb_payload(config, meta, result, read_rows(pred), golds)
+    run = wandb.init(
+        project=config["wandb_project"],
+        name=config["name"],
+        tags=config["tags"],
+        job_type="eval",
+        config=payload.config,
+    )
+    table = wandb.Table(columns=list(TABLE_COLUMNS), data=payload.table)
+    run.log({**payload.metrics, "predictions": table})
+    artifact = wandb.Artifact(f"{config['name']}-{meta['split']}", type="predictions")
+    artifact.add_dir(str(out_dir))
+    run.log_artifact(artifact)
+    url = run.url or run.id  # offline runs have no URL
+    run.finish()
+    return url
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Score predictions against prepared gold.")
     parser.add_argument("--pred", type=Path, required=True, help="JSONL of {docid, output}")
     parser.add_argument("--gold", type=Path, required=True, help="prepared JSONL of the split")
+    parser.add_argument("--config", type=Path, help="experiment YAML (required with --wandb)")
+    parser.add_argument("--wandb", action="store_true", help="log the run to W&B")
     args = parser.parse_args()
+    if args.wandb and args.config is None:
+        parser.error("--wandb requires --config")
     preds, parse_failures = read_predictions(args.pred)
-    print(format_result(score(preds, read_gold(args.gold), parse_failures)))
+    golds = read_gold(args.gold)
+    result = score(preds, golds, parse_failures)
+    url = log_run(args.config, args.pred, result, golds) if args.wandb else None
+    print(format_result(result))
+    if url:
+        print(url)
 
 
 if __name__ == "__main__":

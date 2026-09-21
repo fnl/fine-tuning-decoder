@@ -1,7 +1,7 @@
 """Scorer tests: hand-built gold/prediction pairs driven through ``score``."""
 
 from data.prepare import Event, event
-from eval import score
+from eval import TABLE_COLUMNS, flatten, score, wandb_payload
 
 
 def attack(**roles: list[list[str]]) -> Event:
@@ -118,3 +118,69 @@ def test_greedy_alignment_still_finds_the_perfect_alignment() -> None:
     gold = {"d1": [attack(Target=[[f"target {i}"]]) for i in range(9)]}
     pred = {"d1": list(reversed(gold["d1"][:7]))}
     assert score(pred, gold)["micro_avg"]["p"] == 1.0
+
+
+def test_flatten_joins_nested_result_keys_with_a_slash() -> None:
+    result = score({"d1": [attack(Target=[["bridge"]])]}, {"d1": [attack(Target=[["bridge"]])]})
+    flat = flatten(result)
+    assert (flat["micro_avg/f1"], flat["Target/p_num"], flat["diagnostics/n_docs"]) == (1.0, 1, 1)
+
+
+def test_flatten_yields_one_scalar_per_slot_field_and_diagnostic() -> None:
+    assert len(flatten(score({"d1": []}, {"d1": []}))) == 55
+
+
+CONFIG = {"name": "always-empty", "tags": ["baseline"], "model": "m", "generation": {"k": 1}}
+META = {
+    "model": "m",
+    "engine": "constant",
+    "engine_version": "constant",
+    "git_sha": "abc",
+    "git_dirty": False,
+    "dataset_revision": "def",
+    "split": "dev",
+    "gpu": "cpu",
+    "n_docs": 2,
+    "n_truncated": 1,
+    "n_cut_off": 1,
+    "wall_seconds": 0.5,
+}
+GOLDS = {"d1": [attack(Target=[["bridge"]])], "d2": []}
+ROWS = [
+    {"docid": "d1", "output": '[{"incident_type":"attack","Target":[["bri', "cut_off": True},
+    {"docid": "d2", "output": "[]", "cut_off": False},
+]
+RESULT = score({"d1": [], "d2": []}, GOLDS, parse_failures={"d1"})
+
+
+def test_wandb_config_is_the_yaml_verbatim_plus_provenance_stamps() -> None:
+    payload = wandb_payload(CONFIG, META, RESULT, ROWS, GOLDS)
+    assert payload.config == {
+        **CONFIG,
+        "git_sha": "abc",
+        "git_dirty": False,
+        "dataset_revision": "def",
+        "engine_version": "constant",
+        "split": "dev",
+        "gpu": "cpu",
+    }
+
+
+def test_wandb_metrics_are_the_flat_result_plus_the_sidecar_counts() -> None:
+    payload = wandb_payload(CONFIG, META, RESULT, ROWS, GOLDS)
+    assert payload.metrics == {
+        **flatten(RESULT),
+        "diagnostics/n_truncated": 1,
+        "diagnostics/n_cut_off": 1,
+    }
+
+
+def test_wandb_table_has_one_row_per_output_with_gold_and_event_counts() -> None:
+    payload = wandb_payload(CONFIG, META, RESULT, ROWS, GOLDS)
+    assert (TABLE_COLUMNS, payload.table) == (
+        ("docid", "gold", "output", "parse_ok", "cut_off", "n_gold_events", "n_pred_events"),
+        [
+            ["d1", '[{"incident_type":"attack","Target":[["bridge"]]}]', ROWS[0]["output"], False, True, 1, 0],
+            ["d2", "[]", "[]", True, False, 0, 0],
+        ],
+    )

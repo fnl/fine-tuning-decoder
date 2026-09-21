@@ -1,0 +1,11 @@
+# Zero-shot baseline: the base model with the system prompt alone (DESIGN §5, §11 milestone 2).
+name: qwen3-4b-zero-shot
+tags: [baseline, zero-shot]
+model: Qwen/Qwen3-4B-Instruct-2507
+dataset: fnl-es/muc4-chat
+engine: vllm
+exemplars: []
+generation:
+  max_new_tokens: 512
+  max_model_len: 3072
+wandb_project: muc4-event-extraction

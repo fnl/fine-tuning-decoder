@@ -32,14 +32,15 @@ Repo + thin notebook (rejected: notebook-only, for portability and
 diff-ability).
 
 ```
-pyproject.toml          # uv; py >=3.11,<3.13; core deps CPU-installable
+pyproject.toml          # uv; py >=3.11,<3.14 (Colab is 3.13); core deps CPU-installable
 configs/*.yaml          # one file per experiment
 src/
   data/prepare.py       # download GTT JSON → chat JSONL → push to Hub
+  generate.py           # render inputs (+ exemplars) → engine (vLLM | constant) → outputs JSONL
   train.py              # Unsloth + TRL SFTTrainer, config-driven
-  eval.py               # generate + GTT scorer + diagnostics → W&B
+  eval.py               # GTT scorer + diagnostics → W&B
 tests/                  # pytest, CPU only
-notebooks/colab.ipynb   # ~6 cells: clone@ref, pip install, secrets, prepare, train, eval
+notebooks/colab.ipynb   # thin: clone@ref, pip install, secrets, gold, then one cell per GPU run
 docs/DESIGN.md          # this file
 RESULTS.md, TODO.md     # written in milestone 6 / as ideas arise
 ```
@@ -73,13 +74,15 @@ Rejected: WikiEvents (246 docs, coref-heavy output), RAMS (trigger given,
 
 ## 5. Base model
 
-- **Target: Qwen3-4B-Instruct** (Apache-2.0, strong JSON, Unsloth-supported).
+- **Target: `Qwen/Qwen3-4B-Instruct-2507`** (Apache-2.0, strong JSON,
+  Unsloth-supported) — the official repo, not the Unsloth mirror, whose hybrid
+  chat template injects `<think>` blocks into assistant turns.
 - **Smoke: Qwen3-0.6B** (same family, full epoch in minutes on T4).
 - **Instruct, not base**, so the zero-shot baseline on the identical checkpoint
   is meaningful and the chat template is native. Base-model variant = round two.
 - Qwen3 thinking mode **off** (`enable_thinking=False`) in training and
-  inference.
-- Check the Unsloth model list before committing; a newer generation may exist.
+  inference; the 2507 template ignores the flag, it is passed anyway so every
+  rendering follows one convention.
 
 ## 6. Task framing
 

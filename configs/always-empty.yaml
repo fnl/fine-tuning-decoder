@@ -1,0 +1,12 @@
+# Always-empty baseline: `[]` for every document, through the same pipeline as the GPU runs.
+# Runs locally on CPU; the model is named because rendering and the input-limit check need its tokenizer.
+name: always-empty
+tags: [baseline, always-empty]
+model: Qwen/Qwen3-4B-Instruct-2507
+dataset: fnl-es/muc4-chat
+engine: constant
+exemplars: []
+generation:
+  max_new_tokens: 512
+  max_model_len: 3072
+wandb_project: muc4-event-extraction
