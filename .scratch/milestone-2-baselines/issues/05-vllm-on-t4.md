@@ -123,3 +123,11 @@ resets the working directory to `/content`, and only the clone cell changed
 it. Fixed in the notebook by prefixing every post-restart cell with
 `%cd /content/fine-tuning-decoder` and chaining the smoke cell's commands
 with `&&`. Generation on the T4 remains the next thing to verify.
+
+**2026-09-21, second attempt:** the "`transformers>=5.10.4` may clash with
+other preinstalled Colab packages" caveat is confirmed: `from vllm import LLM`
+→ transformers `audio_utils` → `import torchaudio` →
+`RuntimeError: PyTorch has CUDA version 12.9 whereas TorchAudio has CUDA
+version 12.8` (Colab's torchaudio predates the torch swap). Fix in the
+notebook: `pip uninstall --yes torchaudio` right after the vLLM install;
+transformers imports it only when present and nothing here needs audio.

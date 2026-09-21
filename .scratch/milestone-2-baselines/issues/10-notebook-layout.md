@@ -63,3 +63,14 @@ GPU smoke; the three W&B runs are M2's validation.
 **Opening**: README "Open in Colab" link
 `https://colab.research.google.com/github/fnl/fine-tuning-decoder/blob/main/notebooks/colab.ipynb`;
 `REF` defaults to `main`.
+
+## Comments
+
+**2026-09-21:** cell order changed after the first Colab runs. The runtime
+restart resets the working directory, so with clone (cell 2) before install
+(cell 3) every later cell ran in `/content` and `configs/…` was not found
+(a `%cd` per cell was tried and rejected as litter). Now: runtime check →
+vLLM install + `torchaudio` removal + restart → clone, checkout, `%cd`,
+`pip install -e .` → import check → secrets → gold → smoke → zero-shot →
+3-shot. The clone cell checks out `origin/$REF` (detached) so re-running it
+picks up new pushes; "Run all twice" still holds.

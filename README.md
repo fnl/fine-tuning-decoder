@@ -163,8 +163,8 @@ The two GPU baselines run on a free-tier T4 from the notebook:
 2. [Open the notebook in Colab](https://colab.research.google.com/github/fnl/fine-tuning-decoder/blob/main/notebooks/colab.ipynb)
    and pick a T4 runtime (Runtime → Change runtime type).
 3. Optionally set `REF` in the clone cell to a commit, branch or tag.
-4. "Run all" twice: the install cell installs vLLM and restarts the runtime
-   once; the second pass is a no-op up to the smoke cell.
+4. "Run all" twice: the first pass installs vLLM and restarts the runtime;
+   the second pass skips the install and runs everything else.
 
 One cell per baseline ends with its W&B run URL.
 
