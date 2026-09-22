@@ -103,7 +103,15 @@ LoRA config and collator kept explicit in `train.py`.
 
 Starting knobs:
 - Completion-only loss (assistant tokens only) — non-negotiable.
-- `max_seq_len` 2048, packing off.
+  *Mechanism fixed 2026-09-22 (milestone-3 map, tickets 03/05): we pre-tokenise
+  and mask the prompt span ourselves after asserting it is a token-level prefix
+  of the full rendering. TRL's `assistant_only_loss` and Unsloth's
+  `train_on_responses_only` are rejected — both would train the empty `<think>`
+  block that our inference prompt already supplies.*
+- `max_seq_len` 2048, packing off; `padding_free` off explicitly (Unsloth
+  auto-enables it). Train examples over the sequence budget are dropped and
+  counted — the 1800-token input budget bounds the prompt alone, so 1 of 1299
+  train documents totals 2082 tokens. *Added 2026-09-22 (ticket 08).*
 - LoRA r=16, α=16, dropout 0, targets all linear (q,k,v,o,gate,up,down).
 - lr 2e-4, cosine, 3 % warmup, 3 epochs, effective batch 16 (bs 2–4 × accum).
 - fp16 on T4, bf16 on L4/A100; QLoRA on T4, bf16 LoRA on rented GPU.
@@ -135,7 +143,9 @@ Estimate: 1300 docs × 3 epochs ≈ 250 steps ≈ 40–60 min for 4B QLoRA on T4
 - Secrets: `HF_TOKEN`, `WANDB_API_KEY` via Colab Secrets in the notebook, env
   vars elsewhere.
 - One YAML per experiment, logged to W&B: `qwen3-0.6b-smoke.yaml` (100 docs,
-  1 epoch, 50 dev docs), `qwen3-4b-r16.yaml`, later `qwen3-4b-r16-bf16.yaml`.
+  3 epochs, 50 dev docs), `qwen3-4b-r16.yaml`, later `qwen3-4b-r16-bf16.yaml`.
+  *Corrected 2026-09-22 (milestone-3 map, ticket 06): 1 epoch is 6 optimizer
+  steps and 2 eval points — too few for the loss trend to carry information.*
 - Merged/GGUF export: out of scope.
 
 ## 10. Tests (CPU, pytest)

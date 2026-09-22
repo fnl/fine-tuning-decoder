@@ -130,8 +130,9 @@ A dev or test document whose text was shortened to fit the input budget.
 _Avoid_: truncated input, clipped document, truncation (unqualified)
 
 **Dropped document**:
-A train document excluded from the dataset because it exceeds the input
-budget.
+A train document excluded because it exceeds a budget: the input budget when
+the dataset is prepared, or the sequence budget when a training run tokenises
+it. Dev and test documents are never dropped. Always counted and reported.
 _Avoid_: filtered document, skipped document
 
 ### Model output
@@ -219,6 +220,51 @@ _Avoid_: template-count match, count accuracy
 The share of predicted events whose event type equals that of the gold
 event they pair with when events are paired without regard to type.
 _Avoid_: incident-type accuracy, type accuracy on aligned templates
+
+### Training
+
+**Prompt**:
+The part of an example the model is not trained to produce: the system
+prompt, any exemplars and the document, up to and including the generation
+prompt. The *input* of an evaluation, seen from the training side.
+_Avoid_: context, instruction part, source
+
+**Completion**:
+The part of an example the model is trained to produce: the target followed
+by its end-of-turn token. Everything the chat template emits after that token
+is excluded, because generation stops there.
+_Avoid_: response, answer, assistant part, label span
+
+**Masked token**:
+A token excluded from the loss, its label set to -100. Every prompt token is
+masked.
+_Avoid_: ignored token, padded token, -100 token
+
+**Completion-only loss**:
+Training loss computed over the completion tokens alone. The project's one
+non-negotiable training decision.
+_Avoid_: response-only loss, assistant-only loss, masked loss
+
+**Sequence budget**:
+The maximum number of tokens of prompt and completion together that one
+training example may have. Distinct from the *input budget*, which bounds the
+prompt alone when the dataset is prepared.
+_Avoid_: max length, max_seq_len, context limit
+
+**Subset**:
+The first N examples of a split, named by an experiment's config. Absent N
+means the whole split.
+_Avoid_: sample, slice, shard
+
+**Eval point**:
+A step in a run at which the dev subset is scored and a checkpoint is saved.
+The two coincide by design.
+_Avoid_: evaluation step, callback, validation step
+
+**Checkpoint**:
+What a run saves at an eval point: the adapter, and the optimizer state that
+would let the run resume.
+_Avoid_: snapshot, save, model
 
 ### Models and experiments
 
