@@ -102,7 +102,7 @@ def vllm_engine(model: str, *, max_model_len: int, max_new_tokens: int) -> Engin
 def unsloth_engine(
     model: Any, tokenizer: PreTrainedTokenizerBase, *, max_new_tokens: int, batch_size: int
 ) -> Engine:
-    """The model under training, in process: batched, greedy, left-padded.
+    """The model under training, in process: batched, greedy, left-padded per batch.
 
     Unsloth's patched ``model.generate`` switches to inference and back to training
     itself (mode, KV cache, gradient checkpointing); calling ``for_inference``
@@ -113,7 +113,6 @@ def unsloth_engine(
     eos_ids = [tokenizer.convert_tokens_to_ids(t) for t in ("<|im_end|>", "<|endoftext|>")]
 
     def engine(inputs: list[str]) -> list[GenerationResult]:
-        tokenizer.padding_side = "left"  # completions then start at one shared column
         order = sorted(range(len(inputs)), key=lambda i: len(inputs[i]))
         results: dict[int, GenerationResult] = {}
         for start in range(0, len(order), batch_size):
@@ -122,6 +121,9 @@ def unsloth_engine(
                 [inputs[i] for i in index],
                 return_tensors="pt",
                 padding=True,
+                # per call, so completions start at one shared column: every generate
+                # resets the tokenizer's own padding_side to "right" on its way out
+                padding_side="left",
                 add_special_tokens=False,
             ).to(model.device)
             outputs = model.generate(
