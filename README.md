@@ -179,7 +179,9 @@ saves a checkpoint that is pushed to the Hub repository named by `adapter`
 (the adapter only, never merged). One W&B run carries the training loss
 (`train/*`), the dev scores (`dev/*`, the same keys as a baseline run under a
 prefix, because 50 documents are a training signal and not a result), the
-YAML with every derived number and the resolved library versions as config,
+YAML under `experiment`, every derived number under `derived` and the resolved
+library versions as config (nested, because the trainer's own W&B integration
+overwrites top-level keys named like its settings, such as `warmup_ratio`),
 and at the end a `predictions` table from the last eval point. Training
 examples over the sequence budget (`max_seq_len`) are dropped and counted, not
 truncated. The run URL is printed last.

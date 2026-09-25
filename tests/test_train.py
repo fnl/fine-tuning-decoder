@@ -1,7 +1,7 @@
 """Training tests: masking, the sequence budget, subsets, step arithmetic, config and the callback."""
 
 import copy
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -19,6 +19,7 @@ from train import (
     build_dataset,
     eval_interval,
     load_config,
+    run_config,
     select_subset,
     tokenize_example,
     training_steps,
@@ -298,3 +299,22 @@ def test_callback_scores_the_generated_outputs_against_the_targets(
     )
     callback.on_step_end(None, SimpleNamespace(global_step=1, max_steps=1), None)
     assert log.calls[0][0][0]["dev/micro_avg/f1"] == 1.0
+
+
+def smoke_run_config() -> dict[str, Any]:
+    derived = {"total_steps": 21, "eval_steps": 3, "warmup_steps": 1}
+    stamps = {"git_sha": "0" * 40, "git_dirty": False, "dataset_revision": "0" * 40, "gpu": "T4"}
+    return run_config(smoke_config(), derived, {"trl": "0.24.0"}, stamps)
+
+
+def test_run_config_shares_no_top_level_key_with_the_trainer_settings() -> None:
+    # the W&B integration overwrites every top-level key named like a trainer setting;
+    # warmup_ratio is one in the transformers Colab runs, no longer in the local one
+    from transformers import TrainingArguments
+
+    trainer_settings = {field.name for field in fields(TrainingArguments)} | {"warmup_ratio"}
+    assert set(smoke_run_config()) & trainer_settings == set()
+
+
+def test_run_config_keeps_the_experiment_verbatim() -> None:
+    assert smoke_run_config()["experiment"] == smoke_config()

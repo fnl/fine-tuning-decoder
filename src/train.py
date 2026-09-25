@@ -232,6 +232,26 @@ class ScoringCallback:
         self.log({**{f"dev/{k}": v for k, v in flatten(result).items()}, "train/global_step": step})
 
 
+def run_config(
+    config: Mapping[str, Any],
+    derived: Mapping[str, Any],
+    versions: Mapping[str, str],
+    stamps: Mapping[str, Any],
+) -> dict[str, Any]:
+    """The W&B config of a training run: the experiment and its derived numbers nested.
+
+    Nested because the W&B integration writes every trainer setting and the model
+    config into the same top level, overwriting any key of ours that shares a
+    name (``warmup_ratio``, ``seed``, ``eval_steps``, ...).
+    """
+    return {
+        "experiment": dict(config),
+        "derived": dict(derived),
+        "versions": dict(versions),
+        **stamps,
+    }
+
+
 def train(config: dict[str, Any]) -> str:
     """Fine-tune the experiment's model, push the adapter to the Hub, return the W&B run URL."""
     import unsloth  # noqa: F401  (first: it patches transformers, trl and peft on import)
@@ -296,15 +316,17 @@ def train(config: dict[str, Any]) -> str:
         name=config["name"],
         tags=config["tags"],
         job_type="train",
-        config={
-            **config,
-            **derived,
-            "versions": {package: version(package) for package in VERSIONED},
-            "git_sha": _git("rev-parse", "HEAD"),
-            "git_dirty": bool(_git("status", "--porcelain")),
-            "dataset_revision": revision,
-            "gpu": _gpu_name(),
-        },
+        config=run_config(
+            config,
+            derived,
+            {package: version(package) for package in VERSIONED},
+            {
+                "git_sha": _git("rev-parse", "HEAD"),
+                "git_dirty": bool(_git("status", "--porcelain")),
+                "dataset_revision": revision,
+                "gpu": _gpu_name(),
+            },
+        ),
     )
 
     class ScoringTrainerCallback(ScoringCallback, TrainerCallback):
