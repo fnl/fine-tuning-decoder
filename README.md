@@ -24,18 +24,17 @@ What you need before anything below works, and what each is for:
 | Python ≥ 3.11 and [`uv`](https://docs.astral.sh/uv/) | everything local: data prep, scorer, tests | your machine |
 | network access to the Hugging Face Hub | the Qwen tokenizer (tests, `generate`) and the `fnl-es/muc4-chat` dataset | — |
 | a [Weights & Biases](https://wandb.ai) account and its API key | logging a baseline or training run (`eval --wandb`) | `WANDB_API_KEY` env var locally; Colab Secret `WANDB_API_KEY` |
-| a Hugging Face token (write scope) | publishing the dataset (`prepare --push`) and, from milestone 3, adapters | `HF_TOKEN` env var or `hf auth login` locally; Colab Secret `HF_TOKEN` |
-| a Google account with [Colab](https://colab.research.google.com) | the GPU baselines and training (free-tier T4 suffices for milestone 2) | — |
+| a Hugging Face token (write scope) | publishing the dataset (`prepare --push`) and the adapters (`train`) | `HF_TOKEN` env var or `hf auth login` locally; Colab Secret `HF_TOKEN` |
+| a Google account with [Colab](https://colab.research.google.com) | the GPU baselines and training (a free-tier T4 suffices for both) | — |
 
 Scoring without `--wandb`, the data prep without `--push` and the whole test
 suite need no key at all. Keys are read from the environment only; never put
-one in a config, a notebook cell or a commit (notebook outputs are stripped
-by a git filter for this reason).
+keys in a config, a notebook cell or a commit (notebook outputs are stripped
+by a git filter).
 
 ## Setup
 
-Everything here runs on CPU; generation with the base model and training
-run on a Colab GPU from [`notebooks/colab.ipynb`](notebooks/colab.ipynb).
+Everything runs on CPU.
 
 ```bash
 uv sync
@@ -160,7 +159,7 @@ The two GPU baselines run on a free-tier T4 from the notebook:
 1. In Colab, open the key icon in the left sidebar and add the secrets
    `WANDB_API_KEY` and `HF_TOKEN` with notebook access enabled (the notebook
    fails loudly if either is missing).
-2. [Open the notebook in Colab](https://colab.research.google.com/github/fnl/fine-tuning-decoder/blob/main/notebooks/colab.ipynb)
+2. [Open the notebook in Colab](https://colab.research.google.com/github/fnl/fine-tuning-decoder/blob/main/notebooks/baselines.ipynb)
    and pick a T4 runtime (Runtime → Change runtime type).
 3. Optionally set `REF` in the clone cell to a commit, branch or tag.
 4. "Run all" twice: the first pass installs vLLM and restarts the runtime;
@@ -168,15 +167,61 @@ The two GPU baselines run on a free-tier T4 from the notebook:
 
 One cell per baseline ends with its W&B run URL.
 
+## Fine-tuning
+
+A fine-tune is one experiment YAML in `configs/` (`qwen3-0.6b-smoke`) run by
+`train`: it takes the first `train_docs` train documents (all of them when the
+key is absent), masks every prompt token so the loss covers only the JSON
+target and its end-of-turn token, and trains a LoRA adapter with Unsloth and
+TRL. Every `eval_every` epochs it generates for the first `dev_docs` dev
+documents with the model under training, scores them with the scorer above and
+saves a checkpoint that is pushed to the Hub repository named by `adapter`
+(the adapter only, never merged). One W&B run carries the training loss
+(`train/*`), the dev scores (`dev/*`, the same keys as a baseline run under a
+prefix, because 50 documents are a training signal and not a result), the
+YAML with every derived number and the resolved library versions as config,
+and at the end a `predictions` table from the last eval point. Training
+examples over the sequence budget (`max_seq_len`) are dropped and counted, not
+truncated. The run URL is printed last.
+
+It needs a GPU and the notebook-installed training stack, so it runs on a
+free-tier T4:
+
+1. Add the Colab Secrets `WANDB_API_KEY` and `HF_TOKEN` (write scope) as for
+   the baselines.
+2. [Open the notebook in Colab](https://colab.research.google.com/github/fnl/fine-tuning-decoder/blob/main/notebooks/train.ipynb)
+   and pick a T4 runtime.
+3. Optionally set `REF` in the clone cell to a commit, branch or tag.
+4. "Run all" once: nothing restarts the runtime. A `--limit 8` smoke cell runs
+   a handful of steps before the real run, and the last cell loads the pushed
+   adapter back from the Hub onto a fresh base model and generates one dev
+   document.
+
+The command the notebook runs:
+
+```bash
+python -m train --config configs/qwen3-0.6b-smoke.yaml [--limit N]
+```
+
+`--limit N` replaces both subset sizes with N. The run prints the kept-token
+count and the decoded completion of the first training batch before the first
+step, the direct evidence that the mask reaches the trainer.
+
+A near-zero dev F1 from the smoke run is a success: it proves the loop, not
+the model. What would mean a broken pipeline is a parse-failure rate above the
+zero-shot baseline's 7.5 %, or all-`[]` predictions together with a flat loss
+curve.
+
 ## Layout
 
 ```
 src/data/prepare.py   corpus -> canonical events -> chat examples -> JSONL / Hub; parse_target
-src/generate.py       render inputs (+ exemplars) -> engine (vLLM | constant) -> outputs JSONL + meta.json
+src/generate.py       render inputs (+ exemplars) -> engine (vLLM | in-process | constant) -> outputs JSONL + meta.json
+src/train.py          mask prompts -> LoRA fine-tune -> dev score at every eval point -> adapter on the Hub
 src/eval.py           GTT scorer port + diagnostics; CLI, optionally logging one W&B run
 tests/                pytest, CPU only; tests/oracle/ holds the original GTT eval.py for parity
 configs/              one YAML per experiment
-notebooks/colab.ipynb GPU baselines on Colab; outputs stripped by the nbstripout git filter
+notebooks/            Colab: baselines.ipynb (vLLM), train.ipynb (Unsloth); outputs stripped by nbstripout
 data/                 gitignored: raw/ corpus cache, prepared/ JSONL
 docs/                 DESIGN.md, agent instructions, ADRs (in the future)
 ```

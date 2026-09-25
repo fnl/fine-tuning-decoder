@@ -36,11 +36,12 @@ pyproject.toml          # uv; py >=3.11,<3.14 (Colab is 3.13); core deps CPU-ins
 configs/*.yaml          # one file per experiment
 src/
   data/prepare.py       # download GTT JSON → chat JSONL → push to Hub
-  generate.py           # render inputs (+ exemplars) → engine (vLLM | constant) → outputs JSONL
+  generate.py           # render inputs (+ exemplars) → engine (vLLM | in-process | constant) → outputs JSONL
   train.py              # Unsloth + TRL SFTTrainer, config-driven
   eval.py               # GTT scorer + diagnostics → W&B
 tests/                  # pytest, CPU only
-notebooks/colab.ipynb   # thin: clone@ref, pip install, secrets, gold, then one cell per GPU run
+notebooks/baselines.ipynb  # thin: clone@ref, pip install, secrets, gold, then one cell per GPU run
+notebooks/train.ipynb      # thin: clone@ref, pip install, secrets, smoke, train, load the adapter back
 docs/DESIGN.md          # this file
 RESULTS.md, TODO.md     # written in milestone 6 / as ideas arise
 ```
@@ -144,8 +145,10 @@ Estimate: 1300 docs × 3 epochs ≈ 250 steps ≈ 40–60 min for 4B QLoRA on T4
   vars elsewhere.
 - One YAML per experiment, logged to W&B: `qwen3-0.6b-smoke.yaml` (100 docs,
   3 epochs, 50 dev docs), `qwen3-4b-r16.yaml`, later `qwen3-4b-r16-bf16.yaml`.
-  *Corrected 2026-09-22 (milestone-3 map, ticket 06): 1 epoch is 6 optimizer
-  steps and 2 eval points — too few for the loss trend to carry information.*
+  *Corrected 2026-09-22 (milestone-3 map, ticket 06): 1 epoch is 7 optimizer
+  steps and 2 eval points — too few for the loss trend to carry information.
+  Corrected again 2026-09-23 (implementation): the trainer counts the last,
+  partial accumulation as a step, so 3 epochs are 21 steps, 7 eval points.*
 - Merged/GGUF export: out of scope.
 
 ## 10. Tests (CPU, pytest)

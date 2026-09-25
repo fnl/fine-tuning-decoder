@@ -259,9 +259,14 @@ def read_rows(path: Path) -> list[dict[str, Any]]:
 
 def read_predictions(path: Path) -> tuple[dict[str, list[Event]], set[str]]:
     """Predictions from JSONL rows ``{"docid": ..., "output": <raw model output>}``."""
+    return parse_rows(read_rows(path))
+
+
+def parse_rows(rows: Iterable[Mapping[str, Any]]) -> tuple[dict[str, list[Event]], set[str]]:
+    """Predictions and the docids of parse failures from rows ``{"docid", "output", ...}``."""
     preds = {}
     parse_failures = set()
-    for row in read_rows(path):
+    for row in rows:
         preds[row["docid"]], parse_ok = parse_target(row["output"])
         if not parse_ok:
             parse_failures.add(row["docid"])
@@ -317,6 +322,17 @@ def wandb_payload(
     metrics = flatten(result)
     metrics["diagnostics/n_truncated"] = meta["n_truncated"]
     metrics["diagnostics/n_cut_off"] = meta["n_cut_off"]
+    return WandbPayload(
+        config={**config, **{key: meta[key] for key in CONFIG_STAMPS}},
+        metrics=metrics,
+        table=predictions_table(rows, golds),
+    )
+
+
+def predictions_table(
+    rows: Sequence[Mapping[str, Any]], golds: Mapping[str, list[Event]]
+) -> list[list[Any]]:
+    """One ``TABLE_COLUMNS`` row per output row."""
     table = []
     for row in rows:
         gold = golds[row["docid"]]
@@ -332,9 +348,7 @@ def wandb_payload(
                 len(pred),
             ]
         )
-    return WandbPayload(
-        config={**config, **{key: meta[key] for key in CONFIG_STAMPS}}, metrics=metrics, table=table
-    )
+    return table
 
 
 def log_run(config_path: Path, pred: Path, result: Result, golds: Mapping[str, list[Event]]) -> str:

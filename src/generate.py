@@ -99,6 +99,53 @@ def vllm_engine(model: str, *, max_model_len: int, max_new_tokens: int) -> Engin
     return engine
 
 
+def unsloth_engine(
+    model: Any, tokenizer: PreTrainedTokenizerBase, *, max_new_tokens: int, batch_size: int
+) -> Engine:
+    """The model under training, in process: batched, greedy, left-padded.
+
+    Unsloth's patched ``model.generate`` switches to inference and back to training
+    itself (mode, KV cache, gradient checkpointing); calling ``for_inference``
+    here would break that restore, so this engine never does.
+    """
+    import torch
+
+    eos_ids = [tokenizer.convert_tokens_to_ids(t) for t in ("<|im_end|>", "<|endoftext|>")]
+
+    def engine(inputs: list[str]) -> list[GenerationResult]:
+        tokenizer.padding_side = "left"  # completions then start at one shared column
+        order = sorted(range(len(inputs)), key=lambda i: len(inputs[i]))
+        results: dict[int, GenerationResult] = {}
+        for start in range(0, len(order), batch_size):
+            index = order[start : start + batch_size]
+            batch = tokenizer(
+                [inputs[i] for i in index],
+                return_tensors="pt",
+                padding=True,
+                add_special_tokens=False,
+            ).to(model.device)
+            outputs = model.generate(
+                **batch,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                temperature=None,
+                top_p=None,
+                top_k=None,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=eos_ids,
+            )
+            for i, row in zip(index, outputs[:, batch["input_ids"].shape[1] :], strict=True):
+                ids = row.tolist()
+                reason = "stop" if any(t in eos_ids for t in ids) else "length"
+                text = str(tokenizer.decode(ids, skip_special_tokens=True))
+                results[i] = GenerationResult(text, reason)
+            del outputs, batch
+        torch.cuda.empty_cache()
+        return [results[i] for i in range(len(inputs))]
+
+    return engine
+
+
 def constant_engine() -> Engine:
     """The always-empty baseline: ``[]`` for every input."""
     return lambda inputs: [GenerationResult("[]", "stop") for _ in inputs]

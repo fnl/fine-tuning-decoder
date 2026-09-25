@@ -12,7 +12,8 @@ events as JSON; a ported GTT scorer computes F1. Vocabulary is fixed in
 in `docs/DESIGN.md`; next steps in `docs/PROJECT_PLANNING.md`.
 
 Python ≥3.11 managed with `uv`. CPU-only locally (data prep, scorer, tests);
-training and inference run on Colab/rented GPUs from `notebooks/colab.ipynb`.
+training and inference run on Colab/rented GPUs from `notebooks/train.ipynb` and
+`notebooks/baselines.ipynb`.
 GPU-only deps (unsloth, trl, bitsandbytes, vllm) are installed by the
 notebook, not `pyproject.toml`.
 
