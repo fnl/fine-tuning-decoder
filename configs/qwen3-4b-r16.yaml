@@ -1,0 +1,26 @@
+# Milestone 4: QLoRA fine-tune of the 4B on the whole train split (DESIGN §7, §9, §11).
+name: qwen3-4b-r16
+tags: [fine-tuned, qlora]
+model: Qwen/Qwen3-4B-Instruct-2507
+dataset: fnl-es/muc4-chat
+adapter: fnl-es/qwen3-4b-muc4-lora-r16
+dev_docs: 50                 # first N dev documents per eval point; train_docs absent = the whole split
+max_seq_len: 2048
+epochs: 3
+lr: 2.0e-4
+scheduler: cosine
+warmup_ratio: 0.03
+effective_batch_size: 16
+per_device_batch_size: 2     # 4 is no lighter and slower on a T4 (ticket 01)
+seed: 3407
+quantization: nf4
+lora:
+  r: 16
+  alpha: 16
+  dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+eval_every: 0.5              # ≈ 41 steps, 6 eval points, each a pushed checkpoint
+generation:
+  max_new_tokens: 512
+  batch_size: 8              # 243 s per 50 docs at 4B; 16 unmeasured (ticket 11)
+wandb_project: muc4-event-extraction
