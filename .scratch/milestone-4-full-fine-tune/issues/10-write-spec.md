@@ -2,7 +2,7 @@
 
 Type: task
 Status: open
-Blocked by: 06, 07, 08, 09
+Blocked by: 06, 07, 08, 09, 12
 HITL: yes
 
 ## Question

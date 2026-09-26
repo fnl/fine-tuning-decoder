@@ -1,7 +1,7 @@
 # 11 The 4B generates empty outputs
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: —
 HITL: yes
 
@@ -99,3 +99,43 @@ That explains the ≈ 12–13 nat losses on `[]` documents, the 3.14 step-1 loss
 after 12 steps, outputs that are only the (special, decoded-away) think block.
 Inference and the vLLM baselines use the official template, so training and
 evaluation disagree. The 0.6B's template has no such block, so milestone 3 never saw it.
+
+## Answer
+
+Resolved 2026-09-26. **Cause:** Unsloth's copy of the Qwen3-4B-Instruct-2507
+chat template puts an empty think block in every assistant turn. So every 4B training
+target began with `<think>\n\n</think>\n\n` (round 2 above). It was not fp16, not Unsloth's
+loss, and not its generation.
+
+**Fix** (commit `439cce1`, test-first): `train()` adopts the official
+tokenizer's chat template (`adopt_chat_template`), the template every evaluation
+renders with. `tokenize_example` raises `MaskingError` unless the
+completion is exactly the target plus `<|im_end|>`. Two tests use Unsloth's actual
+tokenizer, and all 1,299 train and 200 dev examples pass the guard. `.gitignore` now covers
+`huggingface_tokenizers_cache/` and `unsloth_compiled_cache/`, and runs are
+no longer `git_dirty`.
+
+**Verified on a T4**, reruns of ticket 01's probes at `439cce1`:
+
+| | `ruhl0qho` (per-device 4, gen batch 8) | `6svccyzx` (per-device 2, gen batch 4) |
+|---|---|---|
+| loss step 1 → 12 | 1.49 → 0.39 | 1.49 → 0.39 |
+| s / step (steps 2–11) | ≈ 24.5 | ≈ 22.4 |
+| callback, 50 dev docs | **243 s** | **292 s** |
+| decode steps (sum over batches) | 833 over 7 batches, ≤ 292 ms/step | 1,556 over 13 batches, ≤ 188 ms/step |
+| worst case (every batch to 512) | **≈ 1,050 s** | ≈ 1,250 s |
+| cut off / parse failures | 1 / 2 % | 2 / 4 % |
+| dev micro-F1 (50 docs, 12 steps; noise) | 12.5 | 15.8 |
+| peak GPU (whole device, incl. the notebook kernel) | 10.2 GiB (in the callback) | 8.3 GiB |
+
+Step-1 loss now matches plain transformers' base loss (≈ 1.5, round 1). Outputs are
+real JSON. **Generation batch 8 is ≈ 17 % faster than 4 and fits**, with ≥ 4.8 GiB
+headroom even counting the kernel's memory. The worst case is derived from
+the measured per-step time, so it is an upper bound: that time includes prefill.
+
+**Budget** (`probes/cadence_budget.py`, ticket 06's prep): at 243 s per 50 docs,
+`eval_every: 0.5` × 50 docs is ≈ 2.25 h in one session with a ≤ 22-min checkpoint
+gap. At the ≈ 1,050 s worst case it is 3.7 h, 2 sessions and a 35-min gap. Choosing between them is ticket 06's call.
+
+The milestone-2 baselines (vLLM, official template) and the milestone-3 smoke
+adapter (the 0.6B template has no think block) are unaffected.

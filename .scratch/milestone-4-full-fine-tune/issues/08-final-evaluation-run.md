@@ -57,3 +57,15 @@ Resolved 2026-09-26 by grilling (all recommendations accepted).
    first 50 rows (the same docids as the training run's final eval point) is a
    local CPU step. This run only guarantees the rows exist (predictions
    artifact).
+
+## Comments
+
+### 2026-09-26: amendment from ticket 06
+
+Item 2's de-risk now serves the **4B probe adapter**
+`fnl-es/qwen3-4b-muc4-lora-probe` at the revision of run `6svccyzx` (per-device 2,
+12 steps, fixed chat template), over `Qwen/Qwen3-4B-Instruct-2507`, first 50 dev
+docs. It replaces the 0.6B smoke adapter, so the check exercises the real run's shape:
+a 4B fp16 base plus LoRA in vLLM on a T4. It passes if it runs and scores near that
+run's in-process 15.8, within ±3 plus the NF4-vs-fp16 difference. The YAML becomes
+`configs/qwen3-4b-probe-eval.yaml`.

@@ -131,15 +131,48 @@ build plus the run itself.
   empty, and step-1 loss is 3.14 against the 0.6B's 1.37. Both are split off to
   [The 4B generates empty outputs](issues/11-4b-empty-outputs.md), which now
   blocks the cadence ticket.
+- [The comparison note](issues/09-comparison-note.md): **hand-written
+  `docs/milestone-4-comparison.md`, frozen once written.** A headline table and
+  a per-role/diagnostics table of always-empty, zero-shot, 3-shot and the
+  fine-tune (200 dev docs), each row citing its W&B run. Published GTT goes in
+  a sentence, not a row (it is a test-split figure). Also: training facts, links
+  to the W&B curves, the local 50-doc NF4-vs-fp16 line and the surprises. The
+  build commits the skeleton with the baseline rows filled in; the post-run
+  commit fills the rest. `RESULTS.md` links to the note; it does not absorb it.
+
+- [The 4B generates empty outputs](issues/11-4b-empty-outputs.md): **Unsloth's
+  4B chat template put an empty think block in every training target.**
+  Training now adopts the official template, and `tokenize_example` refuses any
+  completion that isn't exactly the target (`439cce1`). The rerun probes start at
+  loss 1.49 and write real JSON. A callback on 50 docs takes **243 s at generation
+  batch 8** (292 s at 4), ≈ 1,050 s in the worst case. The cadence ticket is unblocked.
+
+- [Callback cadence and the 4B YAML](issues/06-callback-cadence-and-4b-yaml.md):
+  **`eval_every: 0.5` × 50 dev docs** (6 eval points; ≈ 2.25 h, one session,
+  checkpoint gap ≤ 22 min, and a 35-min gap accepted in the worst case), per-device batch 2,
+  generation batch 8, `max_new_tokens` 512. Predictions table and `n_cut_off`
+  at every eval point. `configs/qwen3-4b-r16.yaml` →
+  `fnl-es/qwen3-4b-muc4-lora-r16`, and the promise of "values only" holds. The final eval's de-risk
+  step now serves the 4B probe adapter.
+
+- [The resume contract](issues/07-resume-contract.md): **`--resume
+  <wandb_run_id>`** takes the dataset revision from the run. It refuses a finished
+  checkpoint, any experiment-config drift (naming the keys) and a missing checkpoint,
+  and allows new code, recorded in a `resumes` list. A fresh run refuses an adapter repo that
+  already has `last-checkpoint/`, and `--limit` runs never push. CPU tests cover the pure
+  checks; a 0.6B resume drill proves the glue before the real run. `train.ipynb`
+  becomes milestone 4's, with a resume cell that skips itself when `RUN_ID` is empty.
+  New terms: Resume, Rerun.
+
+- [Pin the training stack](issues/12-pin-the-training-stack.md): **pin the
+  resolved stack exactly** in `train.ipynb`'s install cell (unsloth 2026.9.11,
+  unsloth_zoo 2026.9.7, trl 0.24.0, transformers 5.5.0, peft 0.20.0,
+  bitsandbytes 0.50.2). torch stays Colab's, and `--resume` refuses a torch mismatch.
+  A CPU test keeps the pins equal to `VERSIONED`, and the pins stay until a
+  deliberate bump.
 
 ## Not yet specified
 
-- **Dependency drift.** Colab resolved unsloth 2026.9.11 and peft 0.20.0, not
-  the 2026.9.9 / 0.21.0 the milestone-3 map recorded. Whether to pin, and what
-  the pin line looks like, depends on what tickets 01 and 03 find.
-- **`train.ipynb` changes for the 4B run** — a config switch, a resume cell,
-  a load-back cell for the 4B; shape unknown until the resume contract and
-  cadence are fixed.
 - **An NF4 zero-shot baseline**: needed in milestone 4 only if the final
   evaluation falls back to the NF4 Unsloth engine (ticket 08 item 3);
   otherwise it belongs to milestone 5's quantisation-cost comparison.
@@ -149,6 +182,8 @@ build plus the run itself.
 - The rented-GPU / bf16 LoRA run and the quantization-cost comparison —
   milestone 5.
 - `RESULTS.md` itself and the final test-split evaluation — milestone 6.
+- The adapter's Hub model card, and a paired bootstrap on the dev gap if it
+  is small — milestone 6 ([The comparison note](issues/09-comparison-note.md)).
 - Choosing the adapter by best dev eval point; rank and lr sweeps; the
   plain-peft rewrite, base-model variant, DocEE, merged/GGUF export — round
   two (`docs/DESIGN.md` §11).

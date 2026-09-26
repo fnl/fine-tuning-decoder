@@ -303,6 +303,16 @@ _Avoid_: setup, trial, config (for the concept)
 One execution of an experiment, tracked with its metrics.
 _Avoid_: job, session, training
 
+**Resume**:
+Continuing an interrupted run from its last checkpoint in a new process, as
+the same run of the same experiment.
+_Avoid_: restart, rerun, continue training
+
+**Rerun**:
+A fresh run of an experiment that has already run, starting from the base
+model; never a resume.
+_Avoid_: retry, restart
+
 **Smoke run**:
 A run of the smoke model on a small subset whose only purpose is to prove
 that training, masking, checkpointing and evaluation work.
@@ -311,6 +321,12 @@ _Avoid_: test run, dry run
 **Milestone**:
 One of the six ordered project stages. Milestone 4 defines done.
 _Avoid_: phase, sprint, step
+
+**Comparison note**:
+The written, dev-split comparison of a fine-tune against the baselines,
+citing the runs it draws on. Frozen once written; later results link to it
+rather than replace it.
+_Avoid_: report, write-up, results (reserved for `RESULTS.md`)
 
 **Round two**:
 Work explicitly deferred past the six milestones.
