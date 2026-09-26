@@ -109,16 +109,34 @@ Starting knobs:
   of the full rendering. TRL's `assistant_only_loss` and Unsloth's
   `train_on_responses_only` are rejected — both would train the empty `<think>`
   block that our inference prompt already supplies.*
+  *Added 2026-09-26 (milestone-4 map, ticket 11): training adopts the base
+  model's official chat template, because Unsloth's copy for
+  Qwen3-4B-Instruct-2507 renders an empty think block into every assistant turn.
+  The masking step refuses any completion that is not exactly the target plus
+  `<|im_end|>`.*
 - `max_seq_len` 2048, packing off; `padding_free` off explicitly (Unsloth
   auto-enables it). Train examples over the sequence budget are dropped and
   counted — the 1800-token input budget bounds the prompt alone, so 1 of 1299
   train documents totals 2082 tokens. *Added 2026-09-22 (ticket 08).*
 - LoRA r=16, α=16, dropout 0, targets all linear (q,k,v,o,gate,up,down).
 - lr 2e-4, cosine, 3 % warmup, 3 epochs, effective batch 16 (bs 2–4 × accum).
+  *Fixed 2026-09-26 (milestone-4 map, ticket 06): per-device batch 2 × accum 8
+  for the 4B on a T4 (memory is equal at 4, and 2 is faster); generation batch 8.*
 - fp16 on T4, bf16 on L4/A100; QLoRA on T4, bf16 LoRA on rented GPU.
 - Eval callback on dev every ~½ epoch running the real scorer, not just loss.
+  *Fixed 2026-09-26 (ticket 06): the first 50 dev documents, 6 eval points for
+  the 4B, a checkpoint at each, and a predictions table plus the cut-off count
+  at every one.*
+- *Added 2026-09-26 (milestone-4 map, tickets 03, 07, 12): a run resumes after
+  a disconnect with `--resume <wandb_run_id>` from the Hub's `last-checkpoint/`,
+  continuing the same W&B run. It refuses a finished checkpoint, any config drift,
+  or a torch version other than the run's. The training stack is pinned in
+  `train.ipynb`.*
 
 Estimate: 1300 docs × 3 epochs ≈ 250 steps ≈ 40–60 min for 4B QLoRA on T4.
+*Corrected 2026-09-26 (milestone-4 map, tickets 01, 06, 11): measured ≈ 22 s
+per step, so 246 steps take ≈ 1.5 h of pure training. With six 50-document
+callbacks at ≈ 243 s each, the run takes ≈ 2.25 h, one free-tier session.*
 
 ## 8. Evaluation
 
@@ -132,12 +150,19 @@ Estimate: 1300 docs × 3 epochs ≈ 250 steps ≈ 40–60 min for 4B QLoRA on T4
   Qwen3-4B-Instruct with the same system prompt; trivial always-`[]` for
   relevance (~46 %).
 - Inference: vLLM (or Unsloth fast generate), greedy, `max_new_tokens` ≈ 512.
+  *Fixed 2026-09-26 (milestone-4 map, ticket 08): a finished adapter is scored
+  over the whole dev split by vLLM with the fp16 official base plus the LoRA,
+  at the revision the training run recorded, in its own `job_type=eval` run. In-process
+  generation is for the training callback only (and for the fallback if vLLM
+  LoRA fails on a T4).*
 
 ## 9. Artifacts, tracking, secrets, config
 
 - HF namespace: **`fnl-es`** (from `huggingface-cli whoami`). All public.
   - dataset `fnl-es/muc4-chat`
   - adapters `fnl-es/qwen3-4b-muc4-lora` (LoRA adapter only, not merged)
+    *Corrected 2026-09-26 (milestone-4 map, ticket 06): the repo is named after
+    the experiment, `fnl-es/qwen3-4b-muc4-lora-r16`.*
 - **W&B** project `muc4-event-extraction` (chosen over TensorBoard-to-Drive
   for hosted, session-surviving, cross-machine run comparison; `report_to` is
   a one-word switch if we change our mind).
@@ -149,6 +174,9 @@ Estimate: 1300 docs × 3 epochs ≈ 250 steps ≈ 40–60 min for 4B QLoRA on T4
   steps and 2 eval points — too few for the loss trend to carry information.
   Corrected again 2026-09-23 (implementation): the trainer counts the last,
   partial accumulation as a step, so 3 epochs are 21 steps, 7 eval points.*
+  *Added 2026-09-26 (milestone-4 map, ticket 08): a scored adapter gets its
+  own eval YAML, `qwen3-4b-r16-eval.yaml`, naming the adapter, its pinned
+  revision and the training run.*
 - Merged/GGUF export: out of scope.
 
 ## 10. Tests (CPU, pytest)
@@ -166,8 +194,13 @@ Estimate: 1300 docs × 3 epochs ≈ 250 steps ≈ 40–60 min for 4B QLoRA on T4
 3. Smoke fine-tune of Qwen3-0.6B on 100 docs — proves loop, masking,
    checkpoint push, eval callback.
 4. Full QLoRA fine-tune of Qwen3-4B on T4; compare to 2. **← "done"**
+   *Refined 2026-09-26 (milestone-4 map): resumable across sessions; the
+   adapter is scored over all 200 dev documents in its own eval run; the
+   comparison is `docs/milestone-4-comparison.md`, dev split only.*
 5. One rented-GPU run, bf16 LoRA, same config — quantization cost + portability.
 6. `RESULTS.md` (baselines vs fine-tunes vs published GTT/GRIT) + lessons.
+   *Refined 2026-09-26 (milestone-4 map, ticket 09): on the test split; it
+   links to the milestone comparison notes rather than absorbing them.*
 
 Round two (`TODO.md`): DocEE, plain-peft rewrite, base-model variant,
 rank/lr sweeps, sliding windows for long docs.

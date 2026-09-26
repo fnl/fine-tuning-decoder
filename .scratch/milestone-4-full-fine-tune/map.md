@@ -1,6 +1,7 @@
 # Map: Milestone 4 — full QLoRA fine-tune of Qwen3-4B on a T4, compared to the baselines
 
 Label: wayfinder:map
+Status: closed (2026-09-26)
 Created: 2026-09-25
 Source: `docs/DESIGN.md` §1, §7, §8, §9, §11 (milestone 4); the milestone-3 map's out-of-scope list; charting interview 2026-09-25
 
@@ -171,11 +172,17 @@ build plus the run itself.
   A CPU test keeps the pins equal to `VERSIONED`, and the pins stay until a
   deliberate bump.
 
+- [Write the milestone-4 spec](issues/10-write-spec.md): **[`spec.md`](spec.md)
+  is ready for `/implement`.** Also settled: `--resume` excludes `--limit`; an
+  NF4 zero-shot runs only on the vLLM-LoRA fallback; probe-eval and drill files
+  are deleted after use; no score gate on done; the README gets restructured
+  (Resuming, Evaluating an adapter, a post-run Results pointer). DESIGN §7–§9 and §11
+  are corrected with dated notes. **The map is closed.**
+
 ## Not yet specified
 
-- **An NF4 zero-shot baseline**: needed in milestone 4 only if the final
-  evaluation falls back to the NF4 Unsloth engine (ticket 08 item 3);
-  otherwise it belongs to milestone 5's quantisation-cost comparison.
+None: the last patch (an NF4 zero-shot baseline) graduated into the spec's
+fallback path via [Write the milestone-4 spec](issues/10-write-spec.md).
 
 ## Out of scope
 

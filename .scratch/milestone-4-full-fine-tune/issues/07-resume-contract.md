@@ -68,3 +68,9 @@ Item 2 gains one refusal: `--resume` refuses if the running torch version
 differs from the resumed run's `versions.torch`, naming both. Every other
 training package is pinned in the install cell, so torch alone can drift
 between sessions.
+
+### 2026-09-26: amendment from ticket 10
+
+Item 1's invocation drops `[--limit N]`. `--resume` and `--limit` are mutually
+exclusive (argparse error), because item 4 makes a `--limit` run push nothing,
+so it has no `last-checkpoint/` to resume.
