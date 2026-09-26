@@ -74,3 +74,35 @@ between sessions.
 Item 1's invocation drops `[--limit N]`. `--resume` and `--limit` are mutually
 exclusive (argparse error), because item 4 makes a `--limit` run push nothing,
 so it has no `last-checkpoint/` to resume.
+
+### 2026-09-26: the resume drill passed
+
+W&B run `z31g72jy` (`configs/qwen3-0.6b-resume-drill.yaml`, commit `6d38d10`,
+Tesla T4) ran item 6's drill:
+
+- **The interrupted process got further than its output showed.** It trained all
+  6 steps in 52 s (20:15:52–20:16:44 UTC), about 10 s per step with the eval.
+  Its checkpoints reached the Hub trailing the training, and the last one to arrive
+  was step 5 (20:17:07). The step-6 checkpoint was lost with the deleted runtime.
+  A disconnect loses the work since the last checkpoint that *reached the Hub*,
+  not the last one saved locally.
+- **The resume** in a new runtime (`resume: run z31g72jy from step 5`) retrained
+  step 6 and finished the same W&B run. The retrained step 6 reproduced the
+  original's loss (0.653) and dev F1 (0.145) exactly: optimizer, scheduler, RNG
+  and data position were restored. The run shows eval points 1–6, with step 6
+  logged twice (cosmetic, as ticket 03 said), `resumes: [{"step": 5, "git_sha":
+  "6d38d10…"}]` and `adapter_revision` `640bcd7`.
+- **The second `--resume` was refused:** `ResumeError: the run finished: its
+  checkpoint is at step 6 of 6`.
+- **The fresh run was refused.** No second W&B run exists and no Hub commit
+  follows 20:21:40. Rerunning `check_fresh_run` against the repo's live files
+  raises `ResumeError: fnl-es/qwen3-0.6b-muc4-lora-drill holds a
+  last-checkpoint/: …`. The cell's `2>&1 | tail -1` showed an Unsloth banner
+  instead of the error: a pipe block-buffers stdout until exit, while the
+  traceback goes to stderr at once.
+
+Only one step was left to resume, but every part of the glue ran: W&B lookup,
+checkpoint download, `resume="must"`, trainer restore, pushing onward, and the
+tail. The drill section is removed from `train.ipynb`. The drill YAML is kept by
+the user's choice, as with the probe eval. Deleting the Hub repo is the user's
+call.

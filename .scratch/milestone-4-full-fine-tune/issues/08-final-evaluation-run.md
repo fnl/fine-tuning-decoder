@@ -69,3 +69,33 @@ docs. It replaces the 0.6B smoke adapter, so the check exercises the real run's 
 a 4B fp16 base plus LoRA in vLLM on a T4. It passes if it runs and scores near that
 run's in-process 15.8, within ±3 plus the NF4-vs-fp16 difference. The YAML becomes
 `configs/qwen3-4b-probe-eval.yaml`.
+
+### 2026-09-26: the probe eval ran; engine (A) confirmed
+
+W&B run `ecgsh42q` served the probe adapter at `c2bf3a9` over the fp16 base with
+vLLM 0.29.0 on a T4, first 50 dev docs: **21.9 micro-F1** (P 19.3, R 25.3),
+parse-failure rate 10 %, 5 cut-off outputs. Engine (A) works on a T4, so the
+fallback (C) is not built.
+
+The score is +6.1 over the in-process 15.8 (`6svccyzx`), outside the ±3
+criterion. It still counts as a pass, because the criterion was too tight
+rather than the engine being wrong:
+
+- **The LoRA is applied.** Only 2 of 50 outputs equal zero-shot `meduja8a`'s on the
+  same docs. The base scores 14.3 there, the served adapter 21.9, and both have the
+  same 10 % parse-failure rate.
+- **The two engines diverge.** Only 3 of 50 outputs are identical between the
+  served adapter and the in-process one. The gap is 39 vs 26 correct items of 154
+  gold, and a few documents carry it; one alone accounts for +6 items. A 12-step
+  adapter is fragile, and NF4 versus fp16 plus different kernels change its greedy
+  outputs.
+- **Consequence for ticket 09's cross-check:** the NF4-vs-fp16 gap may be several
+  points, not "small". The training run's eval-point F1 is likely to read below the
+  final eval. The note reports the measured difference without a significance claim,
+  as decided.
+- **Parse failures:** the 5 cut-offs are outputs that loop to 512 tokens. That is the
+  base model's own rate on these docs, but above the 7.5 % full-dev zero-shot figure
+  the spec uses as the broken-pipeline threshold. Watch it in the final eval.
+
+The probe-eval YAML and its `baselines.ipynb` cell are kept by the user's choice,
+against spec story 24. They harm nothing, and the notebook test keeps them consistent.
