@@ -1,5 +1,5 @@
 # Smoke run: prove training, masking, checkpointing and evaluation end to end (DESIGN §7, §9).
-# Milestone 4 changes values only: model, adapter, name, tags, batch sizes, and omits the subsets.
+# Milestone 4 changed values only: name, tags, model, adapter, generation batch size, and omits train_docs.
 name: qwen3-0.6b-smoke
 tags: [smoke, qlora]
 model: Qwen/Qwen3-0.6B

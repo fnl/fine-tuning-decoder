@@ -15,11 +15,16 @@ from generate import GenerationResult, constant_engine, render_inputs
 from train import (
     IGNORE_INDEX,
     MaskingError,
+    ResumeError,
     ScoringCallback,
     adopt_chat_template,
     build_dataset,
+    check_fresh_run,
+    check_resume,
     eval_interval,
     load_config,
+    parse_invocation,
+    resumes,
     run_config,
     select_subset,
     tokenize_example,
@@ -290,6 +295,17 @@ def run_steps(
     return log
 
 
+def score_once(examples: list[dict[str, Any]], tokenizer: Any, engine: Any) -> dict[str, Any]:
+    """What a callback logs at its one eval point, generating with ``engine``."""
+    log = RecordingLog()
+    callback = ScoringCallback(
+        examples, engine, tokenizer, interval=1, max_input_tokens=2560, log=log
+    )
+    callback.on_step_end(None, SimpleNamespace(global_step=1, max_steps=1), None)
+    logged: dict[str, Any] = log.calls[0][0][0]
+    return logged
+
+
 @pytest.mark.tokenizer
 def test_callback_scores_at_every_interval_and_at_the_last_step(
     examples: list[dict[str, Any]], tokenizers: dict[str, Any]
@@ -299,11 +315,15 @@ def test_callback_scores_at_every_interval_and_at_the_last_step(
 
 
 @pytest.mark.tokenizer
-def test_callback_logs_the_dev_prefixed_scorer_keys_and_the_global_step(
+def test_callback_logs_the_scorer_keys_cut_offs_predictions_and_the_global_step(
     examples: list[dict[str, Any]], tokenizers: dict[str, Any]
 ) -> None:
     log = run_steps(examples, tokenizers[TOKENIZER_ID], max_steps=3, interval=3)
-    expected = {f"dev/{key}" for key in flatten(score({}, {}))} | {"train/global_step"}
+    expected = {f"dev/{key}" for key in flatten(score({}, {}))} | {
+        "dev/diagnostics/n_cut_off",
+        "predictions",
+        "train/global_step",
+    }
     assert set(log.calls[0][0][0]) == expected
 
 
@@ -320,17 +340,29 @@ def test_callback_scores_the_generated_outputs_against_the_targets(
     examples: list[dict[str, Any]], tokenizers: dict[str, Any]
 ) -> None:
     targets = [ex["messages"][2]["content"] for ex in examples]
-    log = RecordingLog()
-    callback = ScoringCallback(
-        examples,
-        lambda inputs: [GenerationResult(t, "stop") for t in targets],
-        tokenizers[TOKENIZER_ID],
-        interval=1,
-        max_input_tokens=2560,
-        log=log,
-    )
-    callback.on_step_end(None, SimpleNamespace(global_step=1, max_steps=1), None)
-    assert log.calls[0][0][0]["dev/micro_avg/f1"] == 1.0
+    engine = lambda inputs: [GenerationResult(t, "stop") for t in targets]
+    assert score_once(examples, tokenizers[TOKENIZER_ID], engine)["dev/micro_avg/f1"] == 1.0
+
+
+@pytest.mark.tokenizer
+def test_callback_counts_the_outputs_cut_off_by_the_length_limit(
+    examples: list[dict[str, Any]], tokenizers: dict[str, Any]
+) -> None:
+    def engine(inputs: list[str]) -> list[GenerationResult]:
+        return [GenerationResult("[", "length")] + [GenerationResult("[]", "stop")] * (
+            len(inputs) - 1
+        )
+
+    logged = score_once(examples, tokenizers[TOKENIZER_ID], engine)
+    assert logged["dev/diagnostics/n_cut_off"] == 1
+
+
+@pytest.mark.tokenizer
+def test_callback_logs_one_predictions_row_per_dev_document(
+    examples: list[dict[str, Any]], tokenizers: dict[str, Any]
+) -> None:
+    table = score_once(examples, tokenizers[TOKENIZER_ID], constant_engine())["predictions"]
+    assert [row[0] for row in table.data] == [ex["docid"] for ex in examples]
 
 
 def smoke_run_config() -> dict[str, Any]:
@@ -350,3 +382,108 @@ def test_run_config_shares_no_top_level_key_with_the_trainer_settings() -> None:
 
 def test_run_config_keeps_the_experiment_verbatim() -> None:
     assert smoke_run_config()["experiment"] == smoke_config()
+
+
+TORCH = "2.11.0+cu128"
+
+
+def resumed_run_config() -> dict[str, Any]:
+    """The W&B config of an interrupted smoke run, as the resume reads it back."""
+    derived = {"total_steps": 21, "eval_steps": 3, "warmup_steps": 1}
+    stamps = {"git_sha": "0" * 40, "git_dirty": False, "dataset_revision": "0" * 40, "gpu": "T4"}
+    return run_config(smoke_config(), derived, {"torch": TORCH, "trl": "0.24.0"}, stamps)
+
+
+def resume(config: dict[str, Any], *, global_step: int | None = 9, torch: str = TORCH) -> None:
+    check_resume(config, resumed_run_config(), global_step=global_step, torch_version=torch)
+
+
+def test_resume_of_an_interrupted_run_with_the_same_config_is_allowed() -> None:
+    resume(smoke_config())
+
+
+def test_resume_on_newer_code_than_the_run_started_on_is_allowed() -> None:
+    # the running code's sha is never compared: a bug fix may rescue a run
+    run = {**resumed_run_config(), "git_sha": "1" * 40, "git_dirty": True}
+    check_resume(smoke_config(), run, global_step=9, torch_version=TORCH)
+
+
+def test_resume_without_a_checkpoint_is_refused_naming_the_repo() -> None:
+    with pytest.raises(ResumeError, match="fnl-es/qwen3-0.6b-muc4-lora-smoke"):
+        resume(smoke_config(), global_step=None)
+
+
+def test_resume_of_a_finished_run_is_refused() -> None:
+    with pytest.raises(ResumeError, match="finished"):
+        resume(smoke_config(), global_step=21)
+
+
+def test_resume_of_a_finished_run_is_refused_as_finished_whatever_else_changed() -> None:
+    with pytest.raises(ResumeError, match="finished"):
+        resume(smoke_config(), global_step=21, torch="2.12.0+cu128")
+
+
+def test_resume_with_a_different_config_is_refused_naming_every_differing_key() -> None:
+    config = {**smoke_config(), "lr": 1.0e-4, "eval_every": 1.0}
+    with pytest.raises(ResumeError, match=r"\['eval_every', 'lr'\]"):
+        resume(config)
+
+
+def test_resume_on_a_different_torch_is_refused_naming_both_versions() -> None:
+    with pytest.raises(ResumeError, match=r"2\.12\.0\+cu128.*2\.11\.0\+cu128"):
+        resume(smoke_config(), torch="2.12.0+cu128")
+
+
+SHA = "f" * 40
+
+
+def test_first_resume_starts_the_resumes_record() -> None:
+    assert resumes(None, step=9, git_sha=SHA) == [{"step": 9, "git_sha": SHA}]
+
+
+def test_later_resume_appends_to_the_resumes_record() -> None:
+    record = [{"step": 3, "git_sha": "0" * 40}]
+    assert resumes(record, step=9, git_sha=SHA) == [
+        {"step": 3, "git_sha": "0" * 40},
+        {"step": 9, "git_sha": SHA},
+    ]
+
+
+ADAPTER = "fnl-es/qwen3-4b-muc4-lora-r16"
+ADAPTER_FILES = [".gitattributes", "README.md", "adapter_config.json", "adapter_model.safetensors"]
+
+
+def test_fresh_run_on_a_repo_with_a_checkpoint_is_refused_naming_the_repo() -> None:
+    with pytest.raises(ResumeError, match=ADAPTER):
+        check_fresh_run(ADAPTER, [*ADAPTER_FILES, "last-checkpoint/trainer_state.json"])
+
+
+def test_fresh_run_on_an_adapter_only_repo_is_allowed() -> None:
+    check_fresh_run(ADAPTER, ADAPTER_FILES)
+
+
+def test_fresh_run_on_a_missing_repo_is_allowed() -> None:
+    check_fresh_run(ADAPTER, [])
+
+
+def test_resume_flag_names_the_run_to_resume() -> None:
+    invocation = parse_invocation(["--config", str(SMOKE_CONFIG), "--resume", "abcd1234"])
+    assert invocation.resume == "abcd1234"
+
+
+def test_resume_together_with_limit_is_rejected() -> None:
+    with pytest.raises(SystemExit):
+        parse_invocation(["--config", str(SMOKE_CONFIG), "--resume", "abcd1234", "--limit", "8"])
+
+
+def test_full_run_pushes_to_the_hub() -> None:
+    assert parse_invocation(["--config", str(SMOKE_CONFIG)]).push is True
+
+
+def test_limited_run_never_pushes() -> None:
+    assert parse_invocation(["--config", str(SMOKE_CONFIG), "--limit", "8"]).push is False
+
+
+def test_limited_run_takes_the_first_n_train_and_dev_documents() -> None:
+    config = parse_invocation(["--config", str(SMOKE_CONFIG), "--limit", "8"]).config
+    assert (config["train_docs"], config["dev_docs"]) == (8, 8)

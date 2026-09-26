@@ -10,7 +10,7 @@ import pytest
 
 from data.prepare import SYSTEM_PROMPT, TOKENIZER_ID, load, make_example
 from eval import read_rows
-from generate import GenerationResult, constant_engine, generate
+from generate import ADAPTER_PATTERNS, GenerationResult, constant_engine, generate, load_config
 from generate import main as generate_main
 
 CORPUS = Path(__file__).parent / "fixtures" / "corpus"
@@ -198,3 +198,64 @@ def test_cli_metadata_stamps_provenance_and_timing(cli_out: Path) -> None:
         bool(re.fullmatch(r"[0-9a-f]{40}", meta["dataset_revision"])),
         meta["wall_seconds"] >= 0.0,
     ) == (True, True, True, True)
+
+
+def write_yaml(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "experiment.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+ADAPTER_YAML = """\
+adapter: fnl-es/qwen3-4b-muc4-lora-r16
+adapter_revision: 0123456789abcdef0123456789abcdef01234567
+training_run: abcd1234
+"""
+
+
+def test_baseline_config_without_an_adapter_loads(tmp_path: Path) -> None:
+    assert load_config(write_yaml(tmp_path, ALWAYS_EMPTY_YAML))["engine"] == "constant"
+
+
+def test_adapter_config_with_revision_and_training_run_loads(tmp_path: Path) -> None:
+    config = load_config(write_yaml(tmp_path, ALWAYS_EMPTY_YAML + ADAPTER_YAML))
+    assert config["training_run"] == "abcd1234"
+
+
+@pytest.mark.parametrize("key", ["adapter_revision", "training_run"])
+def test_adapter_without_its_revision_or_training_run_is_rejected_by_name(
+    tmp_path: Path, key: str
+) -> None:
+    text = "".join(line + "\n" for line in ADAPTER_YAML.splitlines() if not line.startswith(key))
+    with pytest.raises(ValueError, match=key):
+        load_config(write_yaml(tmp_path, ALWAYS_EMPTY_YAML + text))
+
+
+def test_adapter_with_an_empty_revision_is_rejected_by_name(tmp_path: Path) -> None:
+    text = ADAPTER_YAML.replace(ADAPTER_YAML.splitlines()[1], "adapter_revision:")
+    with pytest.raises(ValueError, match="adapter_revision"):
+        load_config(write_yaml(tmp_path, ALWAYS_EMPTY_YAML + text))
+
+
+# The files of an adapter repo that a training run pushed with hub_strategy="checkpoint".
+ADAPTER_REPO_FILES = [
+    ".gitattributes",
+    "README.md",
+    "adapter_config.json",
+    "adapter_model.safetensors",
+    "chat_template.jinja",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "training_args.bin",
+    "last-checkpoint/adapter_config.json",
+    "last-checkpoint/adapter_model.safetensors",
+    "last-checkpoint/optimizer.pt",
+    "last-checkpoint/trainer_state.json",
+]
+
+
+def test_adapter_snapshot_fetches_only_the_top_level_adapter_files() -> None:
+    from huggingface_hub.utils import filter_repo_objects
+
+    fetched = list(filter_repo_objects(ADAPTER_REPO_FILES, allow_patterns=ADAPTER_PATTERNS))
+    assert fetched == ["adapter_config.json", "adapter_model.safetensors"]

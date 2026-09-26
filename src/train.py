@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -27,6 +29,8 @@ if TYPE_CHECKING:
 # The label of a masked token: excluded from the loss.
 IGNORE_INDEX = -100
 END_OF_TURN = "<|im_end|>"
+# The directory of an adapter repo that ``hub_strategy="checkpoint"`` pushes a resumable state to.
+CHECKPOINT = "last-checkpoint"
 
 # Keys of an experiment YAML: every one required unless optional; nested blocks by their own keys.
 CONFIG_KEYS = frozenset(
@@ -44,6 +48,8 @@ BLOCK_KEYS = {
 QUANTIZATIONS = ("nf4", "none")
 # The pinned training stack, stamped into every run's config: it determines behaviour.
 VERSIONED = ("unsloth", "unsloth_zoo", "trl", "transformers", "torch", "peft", "bitsandbytes")
+# Provenance stamped into a run's config at its start; a resume keeps the original ones.
+STAMPS = ("git_sha", "git_dirty", "dataset_revision", "gpu")
 
 MODEL_CARD = """\
 ---
@@ -75,6 +81,10 @@ Training run: {run_url}
 
 class MaskingError(ValueError):
     """The rendered prompt is not a token-level prefix of the full rendering."""
+
+
+class ResumeError(ValueError):
+    """A run cannot be resumed from its adapter repo, or a fresh run would clobber one."""
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -205,9 +215,9 @@ class ScoringCallback:
     """At every eval point, score the dev subset by generating with the model under training.
 
     Fires every ``interval`` optimizer steps and at the last one, logging the
-    scorer's flat result under ``dev/`` beside ``train/global_step``: never with
-    an explicit ``step=``, which the W&B integration answers by dropping rows.
-    The rows of the last eval point stay in ``rows`` for the end of the run.
+    scorer's flat result and the count of cut-off outputs under ``dev/``, and
+    the ``predictions`` table, beside ``train/global_step``: never with an
+    explicit ``step=``, which the W&B integration answers by dropping rows.
 
     Hooks ``on_step_end`` because ``on_evaluate`` never fires without an
     evaluation strategy. Mixed into a ``TrainerCallback`` by ``train`` so that
@@ -233,7 +243,6 @@ class ScoringCallback:
         self.interval = interval
         self.max_input_tokens = max_input_tokens
         self.log = log
-        self.rows: list[dict[str, Any]] = []
 
     def on_step_end(
         self,
@@ -245,12 +254,22 @@ class ScoringCallback:
         step = state.global_step
         if step % self.interval and step != state.max_steps:
             return
-        self.rows = generate(
+        import wandb
+
+        rows = generate(
             self.examples, self.engine, self.tokenizer, max_input_tokens=self.max_input_tokens
         )
-        preds, parse_failures = parse_rows(self.rows)
+        preds, parse_failures = parse_rows(rows)
         result = score(preds, self.golds, parse_failures)
-        self.log({**{f"dev/{k}": v for k, v in flatten(result).items()}, "train/global_step": step})
+        table = wandb.Table(columns=list(TABLE_COLUMNS), data=predictions_table(rows, self.golds))
+        self.log(
+            {
+                **{f"dev/{k}": v for k, v in flatten(result).items()},
+                "dev/diagnostics/n_cut_off": sum(row["cut_off"] for row in rows),
+                "predictions": table,
+                "train/global_step": step,
+            }
+        )
 
 
 def run_config(
@@ -273,21 +292,110 @@ def run_config(
     }
 
 
-def train(config: dict[str, Any]) -> str:
-    """Fine-tune the experiment's model, push the adapter to the Hub, return the W&B run URL."""
+def check_resume(
+    config: Mapping[str, Any],
+    run: Mapping[str, Any],
+    *,
+    global_step: int | None,
+    torch_version: str,
+) -> None:
+    """Refuse to resume ``run`` (its W&B config) from a checkpoint at ``global_step``.
+
+    ``global_step`` is ``None`` when the adapter repo holds no ``last-checkpoint/``.
+    A different git sha is allowed: a bug fix may rescue a run, and the resume is recorded.
+    """
+    if global_step is None:
+        raise ResumeError(f"{config['adapter']} holds no {CHECKPOINT}/ to resume from")
+    if global_step >= run["derived"]["total_steps"]:
+        raise ResumeError(
+            f"the run finished: its checkpoint is at step {global_step} of "
+            f"{run['derived']['total_steps']}"
+        )
+    if drift := sorted(
+        key
+        for key in config.keys() | run["experiment"].keys()
+        if config.get(key) != run["experiment"].get(key)
+    ):
+        raise ResumeError(f"the experiment differs from the resumed run's in keys {drift}")
+    if torch_version != run["versions"]["torch"]:
+        raise ResumeError(
+            f"torch {torch_version} is running, but the resumed run used {run['versions']['torch']}"
+        )
+
+
+def has_checkpoint(repo_files: Sequence[str]) -> bool:
+    """Whether an adapter repo's files hold a resumable ``last-checkpoint/``."""
+    return any(path.startswith(CHECKPOINT + "/") for path in repo_files)
+
+
+def check_fresh_run(adapter: str, repo_files: Sequence[str]) -> None:
+    """Refuse a fresh run whose pushes would clobber the checkpoint a resume is waiting for."""
+    if has_checkpoint(repo_files):
+        raise ResumeError(
+            f"{adapter} holds a {CHECKPOINT}/: resume its run with --resume <wandb_run_id>, "
+            "or rerun under a new adapter name"
+        )
+
+
+def resumes(
+    record: Sequence[Mapping[str, Any]] | None, *, step: int, git_sha: str
+) -> list[dict[str, Any]]:
+    """A run summary's ``resumes`` record (absent: ``None``) with this resume appended."""
+    return [*map(dict, record or []), {"step": step, "git_sha": git_sha}]
+
+
+def train(config: dict[str, Any], *, push: bool = True, resume: str | None = None) -> str:
+    """Fine-tune the experiment's model, push the adapter to the Hub, return the W&B run URL.
+
+    Without ``push`` the adapter and its checkpoints are saved locally only. With
+    ``resume`` (a W&B run id) the run continues from the adapter repo's
+    ``last-checkpoint/`` as the same W&B run, or a ``ResumeError`` says why not.
+    """
     import unsloth  # noqa: F401  (first: it patches transformers, trl and peft on import)
 
     # isort: split
     import torch
     from datasets import load_dataset
-    from huggingface_hub import HfApi
+    from huggingface_hub import HfApi, snapshot_download
+    from huggingface_hub.errors import RepositoryNotFoundError
     from transformers import AutoTokenizer, TrainerCallback
     from trl import SFTConfig, SFTTrainer
     from unsloth import FastLanguageModel
 
     import wandb
 
-    revision = HfApi().dataset_info(config["dataset"]).sha
+    hub = HfApi()
+    try:
+        repo_files = hub.list_repo_files(config["adapter"]) if push or resume else []
+    except RepositoryNotFoundError:
+        repo_files = []
+    checkpoint = None
+    if resume is None:
+        if push:
+            check_fresh_run(config["adapter"], repo_files)
+        versions = {package: version(package) for package in VERSIONED}
+        stamps = {
+            "git_sha": _git("rev-parse", "HEAD"),
+            "git_dirty": bool(_git("status", "--porcelain")),
+            "dataset_revision": hub.dataset_info(config["dataset"]).sha,
+            "gpu": _gpu_name(),
+        }
+    else:
+        resumed = wandb.Api().run(f"{config['wandb_project']}/{resume}")
+        global_step = None
+        if has_checkpoint(repo_files):
+            # into the HF cache: a copy in output_dir would be re-uploaded at every save
+            snapshot = snapshot_download(config["adapter"], allow_patterns=f"{CHECKPOINT}/*")
+            checkpoint = str(Path(snapshot, CHECKPOINT))
+            state = json.loads(Path(checkpoint, "trainer_state.json").read_text(encoding="utf-8"))
+            global_step = state["global_step"]
+        check_resume(
+            config, resumed.config, global_step=global_step, torch_version=torch.__version__
+        )
+        versions = resumed.config["versions"]
+        stamps = {key: resumed.config[key] for key in STAMPS}
+        print(f"resume: run {resume} from step {global_step}")
+    revision = stamps["dataset_revision"]
     dataset = load_dataset(config["dataset"], revision=revision)
     train_examples = select_subset(dataset["train"], config.get("train_docs"))
     dev_examples = select_subset(dataset["dev"], config.get("dev_docs"))
@@ -338,18 +446,19 @@ def train(config: dict[str, Any]) -> str:
         name=config["name"],
         tags=config["tags"],
         job_type="train",
-        config=run_config(
-            config,
-            derived,
-            {package: version(package) for package in VERSIONED},
-            {
-                "git_sha": _git("rev-parse", "HEAD"),
-                "git_dirty": bool(_git("status", "--porcelain")),
-                "dataset_revision": revision,
-                "gpu": _gpu_name(),
-            },
-        ),
+        config=run_config(config, derived, versions, stamps),
+        id=resume,
+        resume="must" if resume else None,
     )
+    if resume is None:
+        print(f"W&B run id: {run.id} (after a disconnect: --resume {run.id})")
+    else:
+        assert global_step is not None  # check_resume refused a missing checkpoint
+        run.summary["resumes"] = resumes(
+            resumed.summary_metrics.get("resumes"),
+            step=global_step,
+            git_sha=_git("rev-parse", "HEAD"),
+        )
 
     class ScoringTrainerCallback(ScoringCallback, TrainerCallback):
         pass
@@ -402,7 +511,7 @@ def train(config: dict[str, Any]) -> str:
             save_strategy="steps",
             save_steps=derived["eval_steps"],  # a checkpoint at every eval point
             save_total_limit=2,
-            push_to_hub=True,
+            push_to_hub=push,
             hub_model_id=config["adapter"],
             hub_strategy="checkpoint",  # "every_save" pushes nothing resumable
             hub_always_push=True,  # otherwise a push is skipped while the previous one runs
@@ -417,13 +526,16 @@ def train(config: dict[str, Any]) -> str:
     completion = tokenizer.decode(first_batch[0][first_batch[0] != IGNORE_INDEX])
     print(f"first batch: {n_kept} kept tokens; first completion: {completion!r}")
 
-    trainer.train()
-    commit = trainer.push_to_hub(commit_message="End of training")
+    trainer.train(resume_from_checkpoint=checkpoint)  # a path: True searches output_dir
+    if push:
+        commit = trainer.push_to_hub(commit_message="End of training")
+        run.summary.update(
+            {
+                "adapter_revision": commit.oid,
+                "adapter_url": f"https://huggingface.co/{config['adapter']}",
+            }
+        )
 
-    table = wandb.Table(
-        columns=list(TABLE_COLUMNS), data=predictions_table(scoring.rows, scoring.golds)
-    )
-    run.log({"predictions": table, "train/global_step": trainer.state.global_step})
     first_quarter, last_quarter = _loss_quarters(trainer.state.log_history)
     run.summary.update(
         {
@@ -431,8 +543,6 @@ def train(config: dict[str, Any]) -> str:
             "loss_last_quarter": last_quarter,
             "first_batch_kept_tokens": n_kept,
             "n_dropped": n_dropped,
-            "adapter_revision": commit.oid,
-            "adapter_url": f"https://huggingface.co/{config['adapter']}",
         }
     )
     url = run.url or run.id  # offline runs have no URL
@@ -447,15 +557,35 @@ def _loss_quarters(log_history: Sequence[Mapping[str, Any]]) -> tuple[float, flo
     return sum(losses[:quarter]) / quarter, sum(losses[-quarter:]) / quarter
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+@dataclass
+class Invocation:
+    """What one ``python -m train`` asks for: the experiment, whether to push, what to resume."""
+
+    config: dict[str, Any]
+    push: bool
+    resume: str | None
+
+
+def parse_invocation(argv: Sequence[str] | None = None) -> Invocation:
+    """The command line as an ``Invocation``: a ``--limit`` run is a check that never pushes."""
     parser = argparse.ArgumentParser(description="Fine-tune one experiment and push its adapter.")
     parser.add_argument("--config", type=Path, required=True, help="experiment YAML")
-    parser.add_argument("--limit", type=int, help="only the first N train and dev documents")
+    # exclusive: a --limit run pushes nothing, so it leaves no checkpoint to resume
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--limit", type=int, help="only the first N train and dev documents; never pushes"
+    )
+    group.add_argument("--resume", metavar="WANDB_RUN_ID", help="continue this interrupted run")
     args = parser.parse_args(argv)
     config = load_config(args.config)
     if args.limit is not None:
         config["train_docs"] = config["dev_docs"] = args.limit
-    print(train(config))
+    return Invocation(config, push=args.limit is None, resume=args.resume)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    invocation = parse_invocation(argv)
+    print(train(invocation.config, push=invocation.push, resume=invocation.resume))
 
 
 if __name__ == "__main__":

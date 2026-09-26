@@ -40,9 +40,10 @@ src/
   train.py              # Unsloth + TRL SFTTrainer, config-driven
   eval.py               # GTT scorer + diagnostics → W&B
 tests/                  # pytest, CPU only
-notebooks/baselines.ipynb  # thin: clone@ref, pip install, secrets, gold, then one cell per GPU run
-notebooks/train.ipynb      # thin: clone@ref, pip install, secrets, smoke, train, load the adapter back
+notebooks/baselines.ipynb  # thin: clone@ref, pip install, secrets, gold, then baselines and adapter evals
+notebooks/train.ipynb      # thin: clone@ref, pinned pip install, secrets, then 4B check, run, resume
 docs/DESIGN.md          # this file
+docs/milestone-4-comparison.md  # the fine-tune beside the baselines on the dev split
 RESULTS.md, TODO.md     # written in milestone 6 / as ideas arise
 ```
 

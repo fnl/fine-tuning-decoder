@@ -31,6 +31,19 @@ class GenerationResult:
 
 Engine = Callable[[list[str]], list[GenerationResult]]
 
+# Keys an ``adapter`` requires: the exact commit to serve and the W&B run that trained it.
+ADAPTER_KEYS = ("adapter_revision", "training_run")
+# The served adapter's files: the top-level adapter, never the resumable ``last-checkpoint/``.
+ADAPTER_PATTERNS = ["adapter_*"]
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    """The experiment YAML at ``path``; an ``adapter`` must name its revision and training run."""
+    config: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if "adapter" in config and (missing := [k for k in ADAPTER_KEYS if not config.get(k)]):
+        raise ValueError(f"{path.name}: adapter {config['adapter']} needs keys {missing}")
+    return config
+
 
 def render_inputs(
     examples: Sequence[Example],
@@ -77,9 +90,22 @@ def generate(
     ]
 
 
-def vllm_engine(model: str, *, max_model_len: int, max_new_tokens: int) -> Engine:
-    """vLLM on one GPU, greedy decoding; the T4-specific knobs are constants here."""
+def vllm_engine(
+    model: str,
+    *,
+    max_model_len: int,
+    max_new_tokens: int,
+    adapter: str | None = None,
+    adapter_revision: str | None = None,
+) -> Engine:
+    """vLLM on one GPU, greedy decoding; the T4-specific knobs are constants here.
+
+    With ``adapter``, serves that LoRA adapter at ``adapter_revision`` over
+    ``model``: a local snapshot, because ``LoRARequest`` takes no revision.
+    vLLM's default ``max_lora_rank`` of 16 covers our r=16.
+    """
     from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
 
     llm = LLM(
         model,
@@ -89,11 +115,20 @@ def vllm_engine(model: str, *, max_model_len: int, max_new_tokens: int) -> Engin
         max_num_seqs=16,
         enforce_eager=True,
         seed=0,
+        enable_lora=adapter is not None,
     )
     params = SamplingParams(temperature=0.0, max_tokens=max_new_tokens)
+    lora = None
+    if adapter is not None:
+        from huggingface_hub import snapshot_download
+
+        path = snapshot_download(
+            adapter, revision=adapter_revision, allow_patterns=ADAPTER_PATTERNS
+        )
+        lora = LoRARequest(adapter, 1, path)
 
     def engine(inputs: list[str]) -> list[GenerationResult]:
-        outputs = llm.generate(inputs, params)
+        outputs = llm.generate(inputs, params, lora_request=lora)
         return [GenerationResult(o.outputs[0].text, o.outputs[0].finish_reason) for o in outputs]
 
     return engine
@@ -172,7 +207,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--limit", type=int, help="only the first N documents")
     parser.add_argument("--out", type=Path, help="output directory (default outputs/<name>)")
     args = parser.parse_args(argv)
-    config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
+    config = load_config(args.config)
     out = args.out or Path("outputs") / config["name"]
 
     from datasets import load_dataset
@@ -195,6 +230,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             config["model"],
             max_model_len=generation["max_model_len"],
             max_new_tokens=generation["max_new_tokens"],
+            adapter=config.get("adapter"),
+            adapter_revision=config.get("adapter_revision"),
         )
         engine_version = f"vllm {version('vllm')}"
     elif config["engine"] == "constant":

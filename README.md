@@ -169,61 +169,138 @@ One cell per baseline ends with its W&B run URL.
 
 ## Fine-tuning
 
-A fine-tune is one experiment YAML in `configs/` (`qwen3-0.6b-smoke`) run by
-`train`: it takes the first `train_docs` train documents (all of them when the
-key is absent), masks every prompt token so the loss covers only the JSON
-target and its end-of-turn token, and trains a LoRA adapter with Unsloth and
-TRL. Every `eval_every` epochs it generates for the first `dev_docs` dev
-documents with the model under training, scores them with the scorer above and
-saves a checkpoint that is pushed to the Hub repository named by `adapter`
-(the adapter only, never merged). One W&B run carries the training loss
-(`train/*`), the dev scores (`dev/*`, the same keys as a baseline run under a
-prefix, because 50 documents are a training signal and not a result), the
-YAML under `experiment`, every derived number under `derived` and the resolved
-library versions as config (nested, because the trainer's own W&B integration
-overwrites top-level keys named like its settings, such as `warmup_ratio`),
-and at the end a `predictions` table from the last eval point. Training
-examples over the sequence budget (`max_seq_len`) are dropped and counted, not
-truncated. The run URL is printed last.
+A fine-tune is one experiment YAML in `configs/` run by `train`. Milestone 4's
+is `qwen3-4b-r16`: a QLoRA (r=16, NF4 base) fine-tune of
+`Qwen/Qwen3-4B-Instruct-2507` on the whole train split, 3 epochs, 246 steps.
+It takes the first `train_docs` train documents (all of them when the key is
+absent), masks every prompt token so the loss covers only the JSON target and
+its end-of-turn token, and trains a LoRA adapter with Unsloth and TRL. Prompt
+and target are rendered with the base model's official chat template, not
+Unsloth's copy (which would teach an empty thinking block), and a completion
+guard stops the run naming the document if a completion is ever anything but
+the target and its end-of-turn token. Training examples over the sequence
+budget (`max_seq_len`) are dropped and counted, not truncated.
+
+Every `eval_every` epochs (an *eval point*) it generates for the first
+`dev_docs` dev documents with the model under training, scores them with the
+scorer above and saves a checkpoint that is pushed to the Hub repository named
+by `adapter` (the adapter only, never merged), together with a resumable
+`last-checkpoint/`. One W&B run carries:
+
+- the training loss (`train/*`);
+- at every eval point, the dev scores (`dev/*`, the same keys as a baseline run
+  under a prefix, because 50 documents are a training signal and not a result),
+  the count of cut-off outputs (`dev/diagnostics/n_cut_off`) and a browsable
+  `predictions` table, so a parse-failure spike can be diagnosed from the run;
+- as config, the YAML under `experiment`, every derived number under `derived`
+  and the library versions under `versions` (nested, because the trainer's own
+  W&B integration overwrites top-level keys named like its settings, such as
+  `warmup_ratio`);
+- in the summary, the pushed `adapter_revision`, the commit an evaluation pins.
+
+The run prints its W&B run id at the start and its URL last.
 
 It needs a GPU and the notebook-installed training stack, so it runs on a
-free-tier T4:
+free-tier T4 (≈ 2.25 h for the 4B run). The install cell pins that stack to
+the versions every GPU run so far used (unsloth 2026.9.11, unsloth_zoo
+2026.9.7, trl 0.24.0, transformers 5.5.0, peft 0.20.0, bitsandbytes 0.50.2), so
+that a run and its resume execute the same code; torch stays Colab's.
 
 1. Add the Colab Secrets `WANDB_API_KEY` and `HF_TOKEN` (write scope) as for
    the baselines.
 2. [Open the notebook in Colab](https://colab.research.google.com/github/fnl/fine-tuning-decoder/blob/main/notebooks/train.ipynb)
    and pick a T4 runtime.
 3. Optionally set `REF` in the clone cell to a commit, branch or tag.
-4. "Run all" once: nothing restarts the runtime. A `--limit 8` smoke cell runs
-   a handful of steps before the real run, and the last cell loads the pushed
-   adapter back from the Hub onto a fresh base model and generates one dev
-   document.
+4. "Run all" once: nothing restarts the runtime. A 4B `--limit 8` check runs
+   before the real run.
 
-The command the notebook runs:
+The commands the notebook runs:
 
 ```bash
-python -m train --config configs/qwen3-0.6b-smoke.yaml [--limit N]
+python -m train --config configs/qwen3-4b-r16.yaml --limit 8
+python -m train --config configs/qwen3-4b-r16.yaml
 ```
 
-`--limit N` replaces both subset sizes with N. The run prints the kept-token
-count and the decoded completion of the first training batch before the first
-step, the direct evidence that the mask reaches the trainer.
+`--limit N` replaces both subset sizes with N and makes the run a pipeline
+check: it saves locally and never pushes, so it cannot overwrite a real
+adapter. The run prints the kept-token count and the decoded completion of the
+first training batch before the first step, the direct evidence that the mask
+reaches the trainer: it should be the target JSON followed by `<|im_end|>`, with
+no `<think>`, and the step-1 loss should be near 1.5.
 
-A near-zero dev F1 from the smoke run is a success: it proves the loop, not
-the model. What would mean a broken pipeline is a parse-failure rate above the
-zero-shot baseline's 7.5 %, or all-`[]` predictions together with a flat loss
-curve.
+A fresh run refuses to start if its adapter repo already holds a
+`last-checkpoint/`, naming the repo, so a second "Run all" can never destroy a
+run waiting to be resumed. A *rerun* needs a new adapter name, or a person
+deleting the repo.
+
+What would mean a broken pipeline is a parse-failure rate above the zero-shot
+baseline's 7.5 %, all-`[]` predictions, or a step-1 loss far from 1.5. The
+smoke run (`qwen3-0.6b-smoke`) proved the loop in milestone 3; its YAML stays as
+the cheap end-to-end check.
+
+## Resuming a run
+
+A free-tier session guarantees nothing, so a disconnect during the run is the
+normal case. A resume continues the interrupted run from its adapter repo's
+`last-checkpoint/` (adapter, optimizer, scheduler, RNG, step and data position)
+as the same W&B run:
+
+1. Open a new runtime and run the notebook's setup cells (through the secrets).
+2. Set `RUN_ID` in the resume cell to the id the run printed at its start (it
+   is also in the adapter card's "Training run" link) and run that cell. It
+   skips itself while `RUN_ID` is empty, so "Run all" never resumes anything.
+3. Repeat until the run finishes.
+
+```bash
+python -m train --config configs/qwen3-4b-r16.yaml --resume <wandb_run_id>
+```
+
+The resume takes the dataset revision from the run it resumes, never the Hub's
+latest. It refuses, with a `ResumeError` naming the reason:
+
+- an adapter repo without `last-checkpoint/` (names the repo);
+- a finished run (its checkpoint is at the last step: it would train nothing);
+- a YAML that differs from the run's `experiment` config (names every differing
+  key: eval and save points would desynchronise);
+- a running torch other than the run's `versions.torch` (names both: torch is
+  the one package the install cell does not pin).
+
+`--resume` and `--limit` are mutually exclusive, because a `--limit` run pushes
+no checkpoint. Newer code is allowed, so a bug fix can rescue a run: the config
+keeps the original `git_sha`, and each resume appends `{"step", "git_sha"}` to
+a `resumes` list in the run summary. After heavy use, expect Colab to withhold
+a GPU for a while; the checkpoint waits on the Hub.
+
+## Evaluating an adapter
+
+The finished adapter is scored over the dev split like a baseline, from
+`baselines.ipynb`, by vLLM over the fp16 official base: the baselines' own
+engine, rendering and greedy sampling, so the adapter is the only variable.
+Its eval YAML is a baseline YAML with three more keys:
+
+```yaml
+adapter: fnl-es/qwen3-4b-muc4-lora-r16
+adapter_revision: <the training run's summary.adapter_revision>
+training_run: <the training run's W&B id>
+```
+
+`generate` refuses an `adapter` without the other two. It downloads only the
+`adapter_*` files at `adapter_revision` (never `last-checkpoint/`), so a later
+push to the repo cannot change what was scored, and serves them as a LoRA.
+`eval --wandb` logs the YAML as run config, so the eval run names the adapter
+commit and the training run it scored. The YAML is written after training, and
+its generate → eval cell in `baselines.ipynb` lands in the same commit.
 
 ## Layout
 
 ```
 src/data/prepare.py   corpus -> canonical events -> chat examples -> JSONL / Hub; parse_target
-src/generate.py       render inputs (+ exemplars) -> engine (vLLM | in-process | constant) -> outputs JSONL + meta.json
-src/train.py          mask prompts -> LoRA fine-tune -> dev score at every eval point -> adapter on the Hub
+src/generate.py       render inputs (+ exemplars) -> engine (vLLM [+ LoRA] | in-process | constant) -> outputs JSONL + meta.json
+src/train.py          mask prompts -> LoRA fine-tune -> dev score at every eval point -> adapter on the Hub; resume
 src/eval.py           GTT scorer port + diagnostics; CLI, optionally logging one W&B run
 tests/                pytest, CPU only; tests/oracle/ holds the original GTT eval.py for parity
 configs/              one YAML per experiment
 notebooks/            Colab: baselines.ipynb (vLLM), train.ipynb (Unsloth); outputs stripped by nbstripout
 data/                 gitignored: raw/ corpus cache, prepared/ JSONL
-docs/                 DESIGN.md, agent instructions, ADRs (in the future)
+docs/                 DESIGN.md, milestone-4-comparison.md, agent instructions, ADRs (in the future)
 ```
