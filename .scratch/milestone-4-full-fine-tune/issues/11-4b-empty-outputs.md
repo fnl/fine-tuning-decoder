@@ -40,3 +40,62 @@ Discriminating checks (throwaway cells, one GPU session):
 
 Resolve with the cause, the fix or workaround (a knob, a pin, an engine
 change), and the callback numbers.
+
+## Comments
+
+### 2026-09-26: round 1, `probes/diag_4b.py` (commit `e766536`)
+
+W&B runs `bfbvxxhk` (unsloth-fp16), `lz1zddiy` (unsloth-fp32), `nagkh17l`
+(hf-nf4), `ryqasv13` (hf-fp16), Tesla T4, base model with zero-init LoRA,
+first 8 train examples, first 8 dev documents.
+
+| mode | mean loss | per-example loss | hidden max | outputs |
+|---|---|---|---|---|
+| unsloth-fp16 | **8.14** | 2.5, **11.9, 13.2**, 4.4, **12.9**, 5.9, **12.8**, 1.5 | 7,552 | valid JSON |
+| unsloth-fp32 | 14.85 | ≈ 15 everywhere | 8,294 | `!!!!` / `celcel…` garbage |
+| hf-nf4 | 1.17 | 1.69, 0.18, 0.00, 2.80, 0.00, 3.67, 0.00, 1.05 | 7,524 | valid JSON |
+| hf-fp16 | 1.53 | 2.01, 2.35, 0.00, 3.08, 0.00, 3.62, 0.00, 1.16 | 7,400 | valid JSON |
+
+- **The fp16-overflow hypothesis is refuted.** Hidden states peak at ≈ 7,500 in
+  every fp16 mode, including plain transformers, far below 65,504. No non-finite logits anywhere.
+- **The untrained Unsloth 4B generates correctly.** Its outputs are token-for-token
+  identical to hf-nf4 on the first dev document, at generation batch 1 and 4. So the
+  generation path is sound, and the probes' empty outputs come from what 12 steps of
+  training did to the model.
+- **Unsloth's loss is wrong.** The examples that plain transformers finds nearly free
+  (≈ 0, presumably irrelevant documents whose target is `[]`) cost ≈ 12–13 nats under Unsloth. This fits
+  labels shifted one position too far: the model is scored on `<|im_end|>`
+  where `[]` belongs. Training on such targets teaches it to end the turn at
+  once, which matches the empty outputs; the 3.14 step-1 loss fits too.
+- **unsloth-fp32 is broken for this model.** Not a workaround.
+- **`git_dirty`**: `huggingface_tokenizers_cache/` and `unsloth_compiled_cache/`
+  are untracked in the clone. They should go in `.gitignore`.
+
+Round 2 (`probes/diag_loss.py`, commit `bb7d22a`) recomputes cross-entropy from
+Unsloth's own logits at label shifts 0/1/2 against its reported loss, for 4B
+and 0.6B.
+
+### 2026-09-26: round 2, `probes/diag_loss.py` (commit `bb7d22a`); root cause
+
+W&B runs `09lghiwk` (4B), `re31jlou` (0.6B). Unsloth's reported loss equals
+cross-entropy recomputed from its own logits at the normal shift of 1, on every
+example and for both models. **The loss computation is correct; the shift hypothesis is refuted.**
+The difference is in the **labels**: completion lengths are 6 vs 2 tokens on
+`[]` documents and 76 vs 72 on the first, so the 4B's completions carry 4 extra
+tokens.
+
+Confirmed locally (CPU, `tokenize_example` on train[1]):
+
+- `Qwen/Qwen3-4B-Instruct-2507`: 2 completion tokens, `'[]<|im_end|>'`
+- `unsloth/Qwen3-4B-Instruct-2507` (the tokenizer `FastLanguageModel` returns):
+  6 tokens, `'<think>\n\n</think>\n\n[]<|im_end|>'`
+- `Qwen/Qwen3-0.6B`: 2 tokens, `'[]<|im_end|>'`
+
+**Cause:** Unsloth's chat template for Qwen3-4B-Instruct-2507 renders an empty
+think block into the assistant turn of a full conversation. It does not add one to the
+generation prompt. The prompt is still a token prefix, so `MaskingError` passes, but every target
+starts with `<think>\n\n</think>\n\n`, which this instruct model never emits.
+That explains the ≈ 12–13 nat losses on `[]` documents, the 3.14 step-1 loss and,
+after 12 steps, outputs that are only the (special, decoded-away) think block.
+Inference and the vLLM baselines use the official template, so training and
+evaluation disagree. The 0.6B's template has no such block, so milestone 3 never saw it.

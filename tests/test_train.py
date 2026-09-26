@@ -16,6 +16,7 @@ from train import (
     IGNORE_INDEX,
     MaskingError,
     ScoringCallback,
+    adopt_chat_template,
     build_dataset,
     eval_interval,
     load_config,
@@ -28,6 +29,8 @@ from train import (
 CORPUS = Path(__file__).parent / "fixtures" / "corpus"
 SMOKE_CONFIG = Path(__file__).parent.parent / "configs" / "qwen3-0.6b-smoke.yaml"
 SMOKE_MODEL = "Qwen/Qwen3-0.6B"
+# Unsloth's copy of the base model's tokenizer: what FastLanguageModel returns in training
+UNSLOTH_TOKENIZER_ID = "unsloth/Qwen3-4B-Instruct-2507"
 MODELS = (SMOKE_MODEL, TOKENIZER_ID)
 
 
@@ -115,6 +118,35 @@ def test_prompt_that_is_not_a_token_prefix_fails_naming_the_document(
     ex["messages"][2]["content"] = "<think>x</think>[]"
     with pytest.raises(MaskingError, match=ex["docid"]):
         tokenize_example(ex, tokenizers[SMOKE_MODEL])
+
+
+@pytest.fixture(scope="module")
+def unsloth_tokenizer() -> Any:
+    from transformers import AutoTokenizer
+
+    return AutoTokenizer.from_pretrained(UNSLOTH_TOKENIZER_ID)
+
+
+@pytest.mark.tokenizer
+def test_completion_that_is_not_the_target_fails_naming_the_document(
+    examples: list[dict[str, Any]], unsloth_tokenizer: Any
+) -> None:
+    # Unsloth's template renders an empty thinking block into the assistant turn alone
+    with pytest.raises(MaskingError, match=examples[0]["docid"]):
+        tokenize_example(examples[0], unsloth_tokenizer)
+
+
+@pytest.mark.tokenizer
+def test_adopting_the_official_template_makes_the_completion_the_target(
+    examples: list[dict[str, Any]], tokenizers: dict[str, Any]
+) -> None:
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(UNSLOTH_TOKENIZER_ID)
+    adopt_chat_template(tokenizer, tokenizers[TOKENIZER_ID])
+    for ex in examples:
+        completion = tokenizer.decode(kept(tokenize_example(ex, tokenizer)["labels"]))
+        assert completion == ex["messages"][2]["content"] + "<|im_end|>", ex["docid"]
 
 
 def lengths(examples: list[dict[str, Any]], tokenizer: Any) -> list[int]:

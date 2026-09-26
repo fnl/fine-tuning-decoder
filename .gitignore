@@ -14,3 +14,7 @@ __pycache__/
 /data/
 outputs/
 wandb/
+
+# Caches the training stack writes into the working tree on Colab (they mark runs git_dirty)
+huggingface_tokenizers_cache/
+unsloth_compiled_cache/

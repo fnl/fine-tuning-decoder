@@ -116,6 +116,9 @@ def tokenize_example(
     thinking), so the completion is what the model will be asked to produce.
     With ``stop_after_eos`` the sequence ends at the completion's end-of-turn
     token: the newline the chat template emits after it can never be generated.
+    The completion must then be exactly the target and that token, or a
+    ``MaskingError`` names the document: a template that adds to the assistant
+    turn would otherwise be learnt silently.
     """
     messages = example["messages"]
     prompt = _render_ids(tokenizer, messages[:2], add_generation_prompt=True)
@@ -129,7 +132,25 @@ def tokenize_example(
         eos = tokenizer.convert_tokens_to_ids(END_OF_TURN)
         assert isinstance(eos, int)
         full = full[: len(full) - full[::-1].index(eos)]
+        completion = tokenizer.decode(full[len(prompt) :])
+        if completion != messages[-1]["content"] + END_OF_TURN:
+            raise MaskingError(
+                f"document {example['docid']}: the completion {completion[:80]!r} is not the "
+                "target followed by the end-of-turn token"
+            )
     return {"input_ids": full, "labels": [IGNORE_INDEX] * len(prompt) + full[len(prompt) :]}
+
+
+def adopt_chat_template(
+    tokenizer: PreTrainedTokenizerBase, source: PreTrainedTokenizerBase
+) -> None:
+    """Render with ``source``'s chat template: the base model's own, as every evaluation does.
+
+    Unsloth ships its own copy of a model's tokenizer, whose template may differ
+    from the official one; for Qwen3-4B-Instruct-2507 it renders an empty
+    thinking block into every assistant turn, which the model would then learn.
+    """
+    tokenizer.chat_template = source.chat_template
 
 
 def _render_ids(
@@ -260,7 +281,7 @@ def train(config: dict[str, Any]) -> str:
     import torch
     from datasets import load_dataset
     from huggingface_hub import HfApi
-    from transformers import TrainerCallback
+    from transformers import AutoTokenizer, TrainerCallback
     from trl import SFTConfig, SFTTrainer
     from unsloth import FastLanguageModel
 
@@ -278,6 +299,7 @@ def train(config: dict[str, Any]) -> str:
         dtype=torch.bfloat16 if bf16 else torch.float16,
         load_in_4bit=config["quantization"] == "nf4",
     )
+    adopt_chat_template(tokenizer, AutoTokenizer.from_pretrained(config["model"]))
     lora = config["lora"]
     model = FastLanguageModel.get_peft_model(
         model,
