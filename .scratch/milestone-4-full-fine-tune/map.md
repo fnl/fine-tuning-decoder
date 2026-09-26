@@ -28,6 +28,10 @@ build plus the run itself.
   (map, tickets, `spec.md`) and `.scratch/milestone-2-baselines/`.
   `src/train.py` was built so milestone 4 is "write one YAML and run"
   (M3 Q10, ticket 08) — challenge that only with evidence.
+- **Colab credits (2026-09-26):** the free tier refused a GPU for usage
+  limits, so the user bought credits to keep going. Runs may now be on paid
+  T4s (same hardware, measurements valid). The free-tier constraint below
+  still stands: the plan must be doable without credits.
 - Decisions locked in the charting interview (do not re-open):
   - **Destination is a spec** (not an executed run).
   - **The spec covers three things**: the 4B training run, a separate final
@@ -113,6 +117,21 @@ build plus the run itself.
   4B in-process callback is estimated at ≈ 2× the 0.6B's cost per step
   (unmeasured).
 
+- [The final evaluation run](issues/08-final-evaluation-run.md): **vLLM,
+  fp16 official base + LoRA**, the baselines' own path. `generate.py` gains
+  optional `adapter` / `adapter_revision` / `training_run` keys; `eval.py`
+  is unchanged. `qwen3-4b-r16-eval.yaml` is committed after training with the
+  pinned sha and run from `baselines.ipynb`. The first build step is a 0.6B smoke eval
+  to prove vLLM LoRA on a T4; the fallback is an in-process Unsloth engine on NF4.
+
+- [Measure the 4B on a T4](issues/01-measure-4b-on-t4.md): **training
+  fits and is ≈ 22–25 s/step** (5.8 GiB, both per-device batch sizes; 4 is not
+  faster), so ≈ 1.5–1.7 h for 246 steps. Stack unchanged from milestone 3, and
+  the config-nesting fix works on a GPU. **Callback not measured:** every 4B output was
+  empty, and step-1 loss is 3.14 against the 0.6B's 1.37. Both are split off to
+  [The 4B generates empty outputs](issues/11-4b-empty-outputs.md), which now
+  blocks the cadence ticket.
+
 ## Not yet specified
 
 - **Dependency drift.** Colab resolved unsloth 2026.9.11 and peft 0.20.0, not
@@ -121,11 +140,9 @@ build plus the run itself.
 - **`train.ipynb` changes for the 4B run** — a config switch, a resume cell,
   a load-back cell for the 4B; shape unknown until the resume contract and
   cadence are fixed.
-- **Where the final evaluation runs** — `baselines.ipynb` (vLLM stack) for
-  options A/B, `train.ipynb` (Unsloth stack) for C; follows from ticket 08.
-- **An NF4 zero-shot baseline** — the one extra run that would separate
-  fine-tuning gain from quantisation cost if ticket 08 picks B or C; may also
-  fold into milestone 5.
+- **An NF4 zero-shot baseline**: needed in milestone 4 only if the final
+  evaluation falls back to the NF4 Unsloth engine (ticket 08 item 3);
+  otherwise it belongs to milestone 5's quantisation-cost comparison.
 
 ## Out of scope
 
