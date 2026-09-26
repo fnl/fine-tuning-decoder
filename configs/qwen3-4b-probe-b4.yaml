@@ -1,0 +1,28 @@
+# Throwaway probe (milestone-4 ticket 01): step time, callback time and peak memory of the 4B on a T4.
+# The first 192 train documents hold the longest kept example (1,807 tokens, index 184): 12 steps, one eval point.
+name: qwen3-4b-probe-b4
+tags: [probe, qlora]
+model: Qwen/Qwen3-4B-Instruct-2507
+dataset: fnl-es/muc4-chat
+adapter: fnl-es/qwen3-4b-muc4-lora-probe
+train_docs: 192
+dev_docs: 50
+max_seq_len: 2048
+epochs: 1
+lr: 2.0e-4
+scheduler: cosine
+warmup_ratio: 0.03
+effective_batch_size: 16
+per_device_batch_size: 4
+seed: 3407
+quantization: nf4
+lora:
+  r: 16
+  alpha: 16
+  dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+eval_every: 1.0              # one eval point and one checkpoint, at the last step
+generation:
+  max_new_tokens: 512
+  batch_size: 8
+wandb_project: muc4-event-extraction
