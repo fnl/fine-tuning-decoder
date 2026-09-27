@@ -9,7 +9,7 @@ re-litigate them.
 **Learning exercise.** The deliverable is understanding the full pipeline
 (data → chat template → LoRA/QLoRA → eval → adapter on the Hub) plus a
 baseline-vs-fine-tuned comparison. SOTA on the task is explicitly *not* the
-goal; ambition goes to `TODO.md` (round two).
+goal; ambition goes to `docs/TODO.md` (round two).
 
 Done = milestone 4 below with a written comparison. Milestones 5–6 are the
 payoff.
@@ -44,7 +44,8 @@ notebooks/baselines.ipynb  # thin: clone@ref, pip install, secrets, gold, then b
 notebooks/train.ipynb      # thin: clone@ref, pinned pip install, secrets, then 4B check, run, resume
 docs/DESIGN.md          # this file
 docs/milestone-4-comparison.md  # the fine-tune beside the baselines on the dev split
-RESULTS.md, TODO.md     # written in milestone 6 / as ideas arise
+docs/TODO.md            # round two, as ideas arise
+RESULTS.md              # written in milestone 6
 ```
 
 GPU-only deps (`unsloth`, `trl`, `bitsandbytes`, `vllm`) are installed by the
@@ -205,5 +206,5 @@ callbacks at ≈ 243 s each, the run takes ≈ 2.25 h, one free-tier session.*
    *Refined 2026-09-26 (milestone-4 map, ticket 09): on the test split; it
    links to the milestone comparison notes rather than absorbing them.*
 
-Round two (`TODO.md`): DocEE, plain-peft rewrite, base-model variant,
+Round two (`docs/TODO.md`): DocEE, plain-peft rewrite, base-model variant,
 rank/lr sweeps, sliding windows for long docs.

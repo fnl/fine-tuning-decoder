@@ -81,6 +81,25 @@ On the first 50 dev documents, NF4 in process scored 40.5 (`wef2kzoo`, last
 eval point) and fp16 served by vLLM scored 37.5 (`y72d51il`, rescored locally
 on the same 50). The difference is −3.0, with no significance claim.
 
+## Where the points go
+
+Computed from the eval run's predictions (artifact `qwen3-4b-r16-eval-dev` of
+`y72d51il`) with `.scratch/milestone-4-full-fine-tune/probes/error_analysis.py`.
+These numbers are not logged to W&B. Gold items are counted as the scorer
+counts them (731 on dev, about 7 per point of recall). The role rows pool
+entities per document, ignoring event alignment.
+
+| cause | cost | detail |
+|---|---|---|
+| event documents answered `[]` | 93 gold items, ≈ 12.7 points of recall | 21 of the 116 documents with events. Most are political news that mention an incident in passing (median 345 words, against 255 where events were found). Some are annotation oddities: `TST2-MUC4-0031`, an army-against-army clash the prompt excludes, is gold "attack", and three gold "attacks" have no role fillers. The opposite error is half as common: 11 event-free documents were given events. |
+| one repetition loop | 23 gold items, ≈ 3.1 points of recall | `TST1-MUC3-0073` (three bombings, 18 role entities) repeats `"bomb"` until it is cut off at 512 tokens: the run's only cut-off output and only parse failure. The targets do not teach it; 2 of 2,809 train entities repeat a mention. |
+| event splitting | — | Of the 94 event documents answered with events, 56 get the event count right, 23 too few, 15 too many. |
+| PerpInd recall | 85 of 149 PerpInd entities missed | The hardest role for GTT too (44.0). |
+| span boundaries | 25 near misses | "orlando zepeda" for gold "colonel orlando zepeda", "bus" for "buses", "two suspects" for "suspects". |
+
+Not causes: made-up text (6 of 548 predicted mentions are not in the
+document), parse failures (the one loop above) and truncated documents (none).
+
 ## Published results
 
 Context for milestone 6's `RESULTS.md`, not a target (DESIGN §1). Every
@@ -124,6 +143,31 @@ Table 2). No published MUC-4 result for a fine-tuned decoder of ≤ 8B turned up
 documents is 5.7 points below GTT and 8.5 below IterX, and like GTT it loses most
 on recall. Dev and test are different documents, so only milestone 6's
 test-split figure may stand beside it.
+
+**Why a 4B decoder need not beat BERT here.**
+
+- **Bigger decoders don't either.** Under CEAF-RME, fine-tuned greedy
+  Llama-70B (28.5) scores below GTT (32.3), and Qwen3-32B (36.0) only draws
+  level with IterX (35.2). MUC-4 is limited by its annotation conventions: what
+  counts as an incident, where a span ends, how incidents split into events.
+  Those are learned from 1,300 documents, and pretrained knowledge helps little.
+  Span extractors can only point into the text, so they learn the boundaries
+  directly.
+- **GTT trained much longer.** It fine-tuned every BERT weight for 18 epochs at
+  batch 1 and lr 5e-5 (Du et al. 2021, appendix): about 23,000 updates. We
+  trained a rank-16 adapter on an NF4 base for 3 epochs, 246 updates, and the
+  last eval point was still the best.
+- **The splits differ.** The test split is denser than dev, so dev and test
+  scores need not match in either direction:
+
+  | split | docs without events | events per doc | role entities per doc |
+  |---|---:|---:|---:|
+  | train | 46 % | 0.82 | 2.16 |
+  | dev | 42 % | 0.91 | 2.75 |
+  | test | 37 % | 1.00 | 3.06 |
+
+  Within dev alone, the same predictions score 37.5 on the first 50 documents
+  and 44.5 on all 200.
 
 **Why the gap is not only the model.** Gantt et al. (2023) re-annotated 42
 MUC-4 documents and found that experts disagree on how to split incidents into
