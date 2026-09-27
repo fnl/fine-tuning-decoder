@@ -293,14 +293,21 @@ its generate → eval cell in `baselines.ipynb` lands in the same commit.
 
 ## Layout
 
-```
-src/data/prepare.py   corpus -> canonical events -> chat examples -> JSONL / Hub; parse_target
-src/generate.py       render inputs (+ exemplars) -> engine (vLLM [+ LoRA] | in-process | constant) -> outputs JSONL + meta.json
-src/train.py          mask prompts -> LoRA fine-tune -> dev score at every eval point -> adapter on the Hub; resume
-src/eval.py           GTT scorer port + diagnostics; CLI, optionally logging one W&B run
-tests/                pytest, CPU only; tests/oracle/ holds the original GTT eval.py for parity
-configs/              one YAML per experiment
-notebooks/            Colab: baselines.ipynb (vLLM), train.ipynb (Unsloth); outputs stripped by nbstripout
-data/                 gitignored: raw/ corpus cache, prepared/ JSONL
-docs/                 DESIGN.md, milestone-4-comparison.md, agent instructions, ADRs (in the future)
-```
+| path | purpose |
+|---|---|
+| `src/data/prepare.py` | corpus → canonical events → chat examples → JSONL / Hub; `parse_target` |
+| `src/generate.py` | render inputs (+ exemplars) → engine (vLLM [+ LoRA] \| in-process \| constant) → outputs JSONL + `meta.json` |
+| `src/train.py` | mask prompts → LoRA fine-tune → dev score at every eval point → adapter on the Hub; resume |
+| `src/eval.py` | GTT scorer port + diagnostics; CLI, optionally logging one W&B run |
+| `tests/` | the CPU-only test suite, including parity checks of the scorer against the original GTT evaluation |
+| `configs/` | experiment definitions: each baseline, fine-tune and adapter evaluation is one YAML |
+| `notebooks/` | running the GPU steps (baselines, adapter evaluation, training) on Colab |
+| `docs/` | design decisions and their rationale, experiment write-ups and instructions for coding agents |
+
+Written by running the code, all gitignored:
+
+| path | written by | purpose |
+|---|---|---|
+| `data/` | `data.prepare` | caching the downloaded corpus and holding the prepared splits that scoring reads as gold |
+| `outputs/` | `generate`, `train` | per-experiment results: model outputs to score, and a training run's working checkpoints |
+| `wandb/` | `eval --wandb`, `train` | W&B's local staging area for syncing runs, and its logs for debugging them |

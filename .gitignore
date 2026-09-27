@@ -10,11 +10,21 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
-# Local artifacts (corpus cache, prepared dataset, runs)
+# Local artifacts the code writes into the repo root (see README "Layout")
 /data/
-outputs/
-wandb/
+/outputs/
+/wandb/
+
+# W&B artifacts downloaded by hand for analysis (`wandb artifact get` or
+# `wandb.Api().artifact(...).download()` default to ./artifacts/<name>:<version>/);
+# no code in the repo creates this directory
+/artifacts/
 
 # Caches the training stack writes into the working tree on Colab (they mark runs git_dirty)
 huggingface_tokenizers_cache/
 unsloth_compiled_cache/
+
+# Claude Code agent worktrees: nested checkouts (own .git file, often a .venv) that
+# git status lists as untracked and `git add -A` would stage as embedded repos;
+# manage them with `git worktree list` / `git worktree remove`
+/.claude/worktrees/
