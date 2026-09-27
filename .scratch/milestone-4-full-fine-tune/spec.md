@@ -1,6 +1,6 @@
 # Spec: Milestone 4 — full QLoRA fine-tune of Qwen3-4B on a T4, compared to the baselines
 
-Status: ready-for-agent
+Status: done
 Created: 2026-09-26
 Source: `map.md` and `issues/01`–`12` in this directory; `docs/DESIGN.md` §7–§9, §11; `CONTEXT.md`
 

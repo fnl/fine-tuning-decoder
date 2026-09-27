@@ -18,7 +18,8 @@ once complete; `RESULTS.md` (milestone 6) links to it.
   [always-empty `rl997k8g`](https://wandb.ai/flowing/muc4-event-extraction/runs/rl997k8g),
   [zero-shot `meduja8a`](https://wandb.ai/flowing/muc4-event-extraction/runs/meduja8a),
   [3-shot `t9nr1gsf`](https://wandb.ai/flowing/muc4-event-extraction/runs/t9nr1gsf),
-  QLoRA fine-tune TBD (eval run), trained by
+  [QLoRA fine-tune `y72d51il`](https://wandb.ai/flowing/muc4-event-extraction/runs/y72d51il)
+  (eval run, 217 s on a T4), trained by
   [`wef2kzoo`](https://wandb.ai/flowing/muc4-event-extraction/runs/wef2kzoo) (training run).
 
 ## Results
@@ -30,7 +31,7 @@ Micro-averaged over the event type and the five roles, in percent.
 | always-empty (`rl997k8g`) | 0.0 | 0.0 | 0.0 | 0.0 |
 | zero-shot (`meduja8a`) | 18.0 | 19.2 | 18.6 | 7.5 |
 | 3-shot (`t9nr1gsf`) | 23.5 | 17.4 | 20.0 | 5.0 |
-| QLoRA fine-tune (TBD) | TBD | TBD | TBD | TBD |
+| QLoRA fine-tune (`y72d51il`) | 50.6 | 39.7 | **44.5** | 0.5 |
 
 Per-role F1 (the event type and the five roles) and the diagnostics, in percent; the last
 two columns are counts.
@@ -40,7 +41,7 @@ two columns are counts.
 | always-empty | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 42.0 | 42.0 | 0.0 | 0 | 0 |
 | zero-shot | 38.4 | 11.7 | 14.1 | 16.5 | 4.8 | 19.0 | 63.5 | 50.0 | 53.0 | 3 | 0 |
 | 3-shot | 38.5 | 14.2 | 23.9 | 11.1 | 5.7 | 17.2 | 66.0 | 50.5 | 56.6 | 1 | 0 |
-| QLoRA fine-tune | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| QLoRA fine-tune | 63.6 | 27.3 | 35.1 | 43.5 | 55.2 | 34.7 | 83.5 | 64.5 | 89.3 | 1 | 0 |
 
 Under this metric, the published test-split figures are 50.2 for GTT
 (Du et al., 2021) and 53.0 for IterX (Chen et al., 2023), the best we found
@@ -49,9 +50,9 @@ rows.
 
 The numbers rest on 200 documents, 116 of which hold events: 731 gold items to
 recall (181 event types and 550 role entities), so one point of recall is about
-seven items. TBD: if the
-fine-tune's gap to 3-shot is under ~5 points, a paired bootstrap is a milestone-6
-item.
+seven items. The fine-tune's gap to 3-shot is 24.5 points: it recalls 290 gold items
+where 3-shot recalls 127. That is far above the ~5-point threshold, so no
+paired bootstrap is needed.
 
 ## Training
 
@@ -76,10 +77,32 @@ item.
 
 ## NF4 vs fp16
 
-NF4, in process: 40.5 (`wef2kzoo`, last eval point, first 50 dev documents).
-fp16, served by vLLM: TBD (the eval run, the same 50 documents). Difference: TBD,
-with no significance claim.
+On the first 50 dev documents, NF4 in process scored 40.5 (`wef2kzoo`, last
+eval point) and fp16 served by vLLM scored 37.5 (`y72d51il`, rescored locally
+on the same 50). The difference is −3.0, with no significance claim.
 
 ## What surprised us
 
-TBD.
+- **The think block.** The 4B's first probes generated nothing but `""`.
+  Unsloth's copy of the chat template renders an empty `<think>` block into
+  every assistant turn, so every training target began with one. Training now
+  adopts the base model's official template, and a guard refuses any completion
+  that is not exactly the target plus `<|im_end|>` (ticket 11).
+- **The parse-failure spike did not come back.** The 0.6B smoke run's 38 %
+  spike at step 12 was repetition loops. The 4B run logged a predictions table
+  and the cut-off count at every eval point, and neither ever showed more than
+  1 of 50: parse failures were 2 % at the first eval point and 0 % after it
+  (ticket 05).
+- **The NF4-vs-fp16 gap changes sign.** The 12-step probe scored 6.1 points
+  higher when served in fp16 (15.8 → 21.9, `ecgsh42q`), and the finished adapter
+  3.0 lower. On 50 documents that is noise either way.
+- **The first 50 dev documents are harder than the other 150.** The same
+  predictions score 37.5 on the first 50 and 44.5 on all 200. Target looked
+  like the weakest role in training (17.6 at the last eval point) but is one
+  of the strongest on all 200 (43.5). The training callback tracks the trend,
+  not the level.
+- **Fine-tuning bought precision more than volume.** The fine-tune predicts
+  573 items and 3-shot 541, but 290 of the fine-tune's are right against 3-shot's
+  127. Both stay well short of the 731 gold items, so recall is still the limit,
+  as it is for GTT. Our weakest roles are PerpInd (27.3), Weapon (34.7) and
+  PerpOrg (35.1); GTT's test figures for them are 44.0, 59.7 and 41.8.

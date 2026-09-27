@@ -291,6 +291,14 @@ push to the repo cannot change what was scored, and serves them as a LoRA.
 commit and the training run it scored. The YAML is written after training, and
 its generate → eval cell in `baselines.ipynb` lands in the same commit.
 
+## Results
+
+On the 200 dev documents, the QLoRA fine-tune of the 4B scores 44.5 micro-F1,
+against 20.0 for the 3-shot baseline and 18.6 for zero-shot. The full
+comparison, with per-role scores, training facts and every W&B run, is in
+[`docs/milestone-4-comparison.md`](docs/milestone-4-comparison.md); published
+MUC-4 results are summarised in [`docs/DESIGN.md`](docs/DESIGN.md) §12.
+
 ## Layout
 
 | path | purpose |
