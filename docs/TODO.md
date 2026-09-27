@@ -1,7 +1,7 @@
 # Round two
 
-Work deferred past the six milestones (DESIGN §1, §11). Milestones 5 and 6 are
-not listed here. Each item says why it is here and what it costs on the free
+Work deferred past the six milestones (DESIGN §1, §11). Milestone 6 is not
+listed here; milestone 5 was skipped (`docs/milestone-5-skipped.md`). Each item says why it is here and what it costs on the free
 T4.
 
 ## From the milestone-4 error analysis
@@ -40,8 +40,9 @@ Ordered by expected gain per GPU hour. The evidence is in
 - **DocEE** as a second dataset, behind the existing dataset interface (DESIGN §4).
 - **Plain peft/transformers rewrite** of `train.py`, without Unsloth (DESIGN §7).
 - **Base-model variant**: fine-tune the base checkpoint instead of Instruct (DESIGN §5).
-- **Sliding windows for long documents**, instead of dropping train documents
-  and truncating dev and test ones (milestone-1 spec).
+- **The bf16 / `quantization: none` training path**, never run on a GPU
+  since milestone 5 was skipped (`docs/milestone-5-skipped.md`). Exercise it
+  the first time an experiment runs on an Ampere-or-newer GPU.
 - **Merged or GGUF export** of the adapter (milestone-3 and -4 specs).
 - **One shared config reader** for `generate.py`, `train.py` and `eval.py`
   (milestone-3 ticket 08).

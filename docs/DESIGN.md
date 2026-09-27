@@ -44,8 +44,9 @@ notebooks/baselines.ipynb  # thin: clone@ref, pip install, secrets, gold, then b
 notebooks/train.ipynb      # thin: clone@ref, pinned pip install, secrets, then 4B check, run, resume
 docs/DESIGN.md          # this file
 docs/milestone-4-comparison.md  # the fine-tune beside the baselines on the dev split
+docs/milestone-5-skipped.md     # why milestone 5 was dropped
 docs/TODO.md            # round two, as ideas arise
-RESULTS.md              # written in milestone 6
+docs/RESULTS.md         # written in milestone 6
 ```
 
 GPU-only deps (`unsloth`, `trl`, `bitsandbytes`, `vllm`) are installed by the
@@ -202,9 +203,17 @@ callbacks at ≈ 243 s each, the run takes ≈ 2.25 h, one free-tier session.*
    adapter is scored over all 200 dev documents in its own eval run; the
    comparison is `docs/milestone-4-comparison.md`, dev split only.*
 5. One rented-GPU run, bf16 LoRA, same config — quantization cost + portability.
-6. `RESULTS.md` (baselines vs fine-tunes vs published GTT/GRIT) + lessons.
+   *Skipped 2026-09-27: one run against one cannot separate a quantization
+   cost from seed noise, and the same config leaves the milestone-4 errors in
+   place. See `docs/milestone-5-skipped.md`.*
+6. `docs/RESULTS.md` (baselines vs fine-tunes vs published GTT/GRIT) + lessons.
    *Refined 2026-09-26 (milestone-4 map, ticket 09): on the test split; it
    links to the milestone comparison notes rather than absorbing them.*
+   *Moved 2026-09-27 from the repo root to `docs/RESULTS.md`; the fine-tune
+   rows are the NF4 adapter only, since milestone 5 was skipped.*
 
 Round two (`docs/TODO.md`): DocEE, plain-peft rewrite, base-model variant,
 rank/lr sweeps, sliding windows for long docs.
+*Dropped 2026-09-27: sliding windows. No dev or test document exceeds the
+input budget (longest 1,375 tokens), and only 2 of 1,300 train documents are
+dropped, so MUC-4 has no long-document problem.*

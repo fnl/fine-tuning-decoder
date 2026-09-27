@@ -326,7 +326,7 @@ _Avoid_: phase, sprint, step
 The written, dev-split comparison of a fine-tune against the baselines,
 citing the runs it draws on. Frozen once written; later results link to it
 rather than replace it.
-_Avoid_: report, write-up, results (reserved for `RESULTS.md`)
+_Avoid_: report, write-up, results (reserved for `docs/RESULTS.md`)
 
 **Round two**:
 Work explicitly deferred past the six milestones.
