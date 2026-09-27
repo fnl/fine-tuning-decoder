@@ -1,0 +1,14 @@
+# Final evaluation of the milestone-4 adapter over the whole dev split (DESIGN §8).
+name: qwen3-4b-r16-eval
+tags: [fine-tuned, qlora]
+model: Qwen/Qwen3-4B-Instruct-2507
+dataset: fnl-es/muc4-chat
+engine: vllm
+exemplars: []
+adapter: fnl-es/qwen3-4b-muc4-lora-r16
+adapter_revision: 2d3ac04008a333d6d3c1db0ce17990efb00d558e   # wef2kzoo's summary.adapter_revision
+training_run: wef2kzoo
+generation:
+  max_new_tokens: 512
+  max_model_len: 3072
+wandb_project: muc4-event-extraction
