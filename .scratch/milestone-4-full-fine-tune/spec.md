@@ -2,6 +2,9 @@
 
 Status: done
 Created: 2026-09-26
+Closed: 2026-09-27, with three deviations, each marked *Deviation* below: the
+note has two headings more than the fixed five, its published figure is exact,
+and the README has no *Results* section.
 Source: `map.md` and `issues/01`–`12` in this directory; `docs/DESIGN.md` §7–§9, §11; `CONTEXT.md`
 
 ## Problem Statement
@@ -269,6 +272,9 @@ W&B run id. Its headings are fixed:
    - *detail table*: per-role F1 (event type + 5 roles), relevance, event-count
      and event-type accuracy, cut-off outputs, truncated documents;
    - one sentence: published GTT ≈ 50–55 is a **test**-split figure, context only;
+     *Deviation (2026-09-27): the sentence gives the exact figures under our
+     metric, GTT 50.2 and IterX 53.0, the best found; "≈ 50–55" was a range
+     from memory.*
    - one sentence on how many documents the numbers rest on. If the gap to 3-shot
      is under ~5 points, list a paired bootstrap as a milestone-6 item.
 3. **Training**:
@@ -279,6 +285,20 @@ W&B run id. Its headings are fixed:
    fallback path).
 5. **What surprised us**: short, e.g. the chat-template think block (ticket 11)
    and the parse-failure spike (ticket 05).
+
+*Deviation (2026-09-27, the user's call): the note has two more headings,
+between 4 and 5.*
+
+- ***Where the points go***: an error analysis of the eval run's predictions by
+  `probes/error_analysis.py`. Its numbers are computed locally, not cited from
+  W&B, and the section says so.
+- ***Published results***: moved from a short-lived DESIGN §12. It covers:
+  - the three metrics in use and which one is ours;
+  - the published figures under ours and under CEAF-RME;
+  - why a 4B decoder need not beat BERT-era models here;
+  - the references.
+
+The note stays the single home of milestone-4 results. Milestone 6 links to it.
 
 The note is frozen once complete. `RESULTS.md` (milestone 6) links to it and
 does not absorb it.
@@ -299,6 +319,9 @@ The README is restructured around what a reader does now (decided in this ticket
 - **Evaluating an adapter** (new): the eval YAML's three keys, the pinned
   revision, the `baselines.ipynb` cells.
 - **Results** (new, **post-run commit only**): a pointer to the comparison note.
+  *Deviation (2026-09-27, the user's call): not added. The README holds no
+  results, not even a pointer, and results live in the comparison note.
+  `docs/` in the Layout table already covers experiment write-ups.*
 - **Layout**: `docs/` gains the note.
 
 DESIGN §3's tree follows the notebooks (`train.ipynb`: "4B check, run, resume";
@@ -411,7 +434,7 @@ by the resume drill and the probe eval on a T4.
    eval point.
 5. **The note.** Fill in the fine-tune row, training facts, the cross-check line
    and the surprises. Add the README's *Results* pointer. That commit closes
-   milestone 4.
+   milestone 4. *Deviation: no README pointer (see README and docs).*
 
 ### Done criterion
 
