@@ -6,6 +6,7 @@ import argparse
 import json
 import urllib.request
 from dataclasses import asdict, dataclass
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
@@ -24,20 +25,9 @@ TOKENIZER_ID = "Qwen/Qwen3-4B-Instruct-2507"
 # Maximum input tokens (system + user, rendered) so input + target fit max_seq_len 2048.
 INPUT_BUDGET = 1800
 
-SYSTEM_PROMPT = """\
-Extract every terrorist event described in the document.
-
-Event types: attack, bombing, kidnapping, arson, robbery, forced work stoppage.
-Roles: PerpInd (individuals who carried out the event), PerpOrg (organisations \
-responsible), Target (physical objects attacked or damaged), Victim (people killed, \
-injured, kidnapped or otherwise harmed), Weapon (weapons or explosives used).
-Military clashes between armed forces are not events.
-
-Answer only with a JSON array of events in order of appearance, or [] if there is \
-none. An event is an object with "incident_type" and its non-empty roles; a role is \
-a list of entities; an entity is a list of every string in the document referring \
-to it, copied verbatim. Example:
-[{"incident_type":"bombing","PerpInd":[["guerrillas","the rebels"]],"Target":[["bridge"]]}]"""
+SYSTEM_PROMPT = (
+    resources.files("data").joinpath("system_prompt.txt").read_text(encoding="utf-8")
+).removesuffix("\n")
 
 Entity = list[str]
 CorpusEntity = list[tuple[str, int]]  # (mention, offset) pairs
@@ -221,9 +211,7 @@ class Example:
     truncated: bool
 
 
-def make_example(
-    doc: Doc, tokenizer: PreTrainedTokenizerBase, *, truncate: bool
-) -> Example | None:
+def make_example(doc: Doc, tokenizer: PreTrainedTokenizerBase, *, truncate: bool) -> Example | None:
     """Render a document as an example, or ``None`` if it is dropped for exceeding the budget.
 
     With ``truncate`` (dev/test) an over-budget document is cut from the end, by
@@ -333,7 +321,10 @@ def main() -> None:
         from huggingface_hub import DatasetCard
 
         dataset = DatasetDict(
-            {split: Dataset.from_list([asdict(ex) for ex in kept]) for split, kept in splits.items()}
+            {
+                split: Dataset.from_list([asdict(ex) for ex in kept])
+                for split, kept in splits.items()
+            }
         )
         dataset.push_to_hub(DATASET_ID, private=False)
         card = DatasetCard.load(DATASET_ID)  # keep the split/feature metadata push_to_hub wrote

@@ -1,0 +1,8 @@
+Extract every terrorist event described in the document.
+
+Event types: attack, bombing, kidnapping, arson, robbery, forced work stoppage.
+Roles: PerpInd (individuals who carried out the event), PerpOrg (organisations responsible), Target (physical objects attacked or damaged), Victim (people killed, injured, kidnapped or otherwise harmed), Weapon (weapons or explosives used).
+Military clashes between armed forces are not events.
+
+Answer only with a JSON array of events in order of appearance, or [] if there is none. An event is an object with "incident_type" and its non-empty roles; a role is a list of entities; an entity is a list of every string in the document referring to it, copied verbatim. Example:
+[{"incident_type":"bombing","PerpInd":[["guerrillas","the rebels"]],"Target":[["bridge"]]}]
