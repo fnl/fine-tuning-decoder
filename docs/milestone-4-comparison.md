@@ -104,6 +104,7 @@ document), parse failures (the one loop above) and truncated documents (none).
 
 Context for milestone 6's `RESULTS.md`, not a target (DESIGN §1). Every
 figure below is on the **test** split; ours are on dev until milestone 6.
+*(Milestone 6, 2026-09-27: the test-split figures are in `docs/RESULTS.md`.)*
 
 **Three metrics circulate, and only one of them is ours.** Figures under
 different metrics never go in one table.
@@ -153,7 +154,9 @@ the tables above.
 **Where we stand.** The fine-tune's 44.5 (P 50.6 / R 39.7) on the 200 *dev*
 documents is 5.7 points below GTT and 8.5 below IterX, and like GTT it loses most
 on recall. Dev and test are different documents, so only milestone 6's
-test-split figure may stand beside it.
+test-split figure may stand beside it. *(Milestone 6, 2026-09-27: on test the
+fine-tune scores 53.9, on par with IterX's 53.0 and GTT's 50.2; see
+`docs/RESULTS.md`.)*
 
 
 **Why the gap is not only the model.** Gantt et al. (2023) re-annotated 42

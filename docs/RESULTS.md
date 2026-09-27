@@ -1,7 +1,8 @@
 # Results
 
-**Draft, 2026-09-27.** The test-split runs (milestone 6) and the checks on
-them are in; the lessons come from the dev work (milestone 4).
+**Final, 2026-09-27.** Milestone 6: the test-split runs and the checks on
+them. The lessons come from the dev work (milestone 4); open questions are in
+`docs/TODO.md`.
 
 What a 4B decoder learns from 1,300 MUC-4 documents: `Qwen/Qwen3-4B-Instruct-2507`
 fine-tuned with QLoRA on a free Colab T4, set beside its own zero-shot and

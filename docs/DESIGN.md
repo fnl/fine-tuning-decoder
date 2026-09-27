@@ -193,6 +193,10 @@ callbacks at ≈ 243 s each, the run takes ≈ 2.25 h, one free-tier session.*
    links to the milestone comparison notes rather than absorbing them.*
    *Moved 2026-09-27 from the repo root to `docs/RESULTS.md`; the fine-tune
    rows are the NF4 adapter only, since milestone 5 was skipped.*
+   *Done 2026-09-27: on the 200 test documents the fine-tune scores 53.9
+   micro-F1 (54.3 under GTT's event-type rule), on par with IterX (53.0) and
+   GTT (50.2) within a bootstrap interval of 48.8 to 58.9. This closes the
+   milestone chain; further work is round two.*
 
 Round two (`docs/TODO.md`): DocEE, plain-peft rewrite, base-model variant,
 rank/lr sweeps, sliding windows for long docs.
