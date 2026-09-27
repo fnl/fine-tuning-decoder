@@ -22,9 +22,9 @@ What you need before anything below works, and what each is for:
 | what | needed for | where it goes |
 |---|---|---|
 | Python ≥ 3.11 and [`uv`](https://docs.astral.sh/uv/) | everything local: data prep, scorer, tests | your machine |
-| network access to the Hugging Face Hub | the Qwen tokenizer (tests, `generate`) and the `fnl-es/muc4-chat` dataset | — |
+| network access to the Hugging Face Hub | the Qwen tokenizer (tests, `generate`) and the `fnl-es/muc4-chat` dataset | nothing to configure: both download on first use into the Hugging Face cache (`~/.cache/huggingface`); `data.prepare` also needs the tokenizer to count input tokens, and `generate` and `train` load the dataset named by the YAML's `dataset` key |
 | a [Weights & Biases](https://wandb.ai) account and its API key | logging a baseline or training run (`eval --wandb`) | `WANDB_API_KEY` env var locally; Colab Secret `WANDB_API_KEY` |
-| a Hugging Face token (write scope) | publishing the dataset (`prepare --push`) and the adapters (`train`) | `HF_TOKEN` env var or `hf auth login` locally; Colab Secret `HF_TOKEN` |
+| a [Hugging Face token](https://huggingface.co/settings/tokens) (write scope) | publishing the dataset (`prepare --push`) and the adapters (`train`) | `HF_TOKEN` env var or `hf auth login` locally; Colab Secret `HF_TOKEN` |
 | a Google account with [Colab](https://colab.research.google.com) | the GPU baselines and training (a free-tier T4 suffices for both) | — |
 
 Scoring without `--wandb`, the data prep without `--push` and the whole test
