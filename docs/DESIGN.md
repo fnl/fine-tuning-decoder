@@ -60,7 +60,8 @@ Why: tiny schema (6 incident types × 5 roles: PerpInd, PerpOrg, Target,
 Victim, Weapon), short docs (mean 320 words, p95 ~700), genuinely
 document-level and **multi-event** (train: 600 docs with 0 templates, 466
 with 1, 146 with 2, 88 with 3+), published baselines (~50–55 F1) to compare
-against.
+against. *Made exact 2026-09-27: 50.2 (GTT) to 53.0 (IterX) on the test
+split under our metric; see §12.*
 
 Known limitation: no published IAA; annotation is inconsistent, so the F1
 ceiling is unknown. Accepted for round one.
@@ -205,3 +206,71 @@ callbacks at ≈ 243 s each, the run takes ≈ 2.25 h, one free-tier session.*
 
 Round two (`TODO.md`): DocEE, plain-peft rewrite, base-model variant,
 rank/lr sweeps, sliding windows for long docs.
+
+## 12. Published results on MUC-4
+
+*Added 2026-09-27, after training run `wef2kzoo`. Context for milestone 6's
+`RESULTS.md`, not a target (§1). Every figure is on the **test** split; ours
+are on dev until milestone 6.*
+
+**Three metrics circulate, and only one of them is ours.** Figures under
+different metrics never go in one table.
+
+- **GTT micro-F1**, called *CEAF-REE_impl* by Chen et al. (2023): the GTT
+  scorer that `eval.py` ports. Per-document template alignment and
+  any-mention matching, micro-averaged over the event type and the five roles.
+  GTT, TempGen and IterX all report it, so it is the one we compare against.
+- **CEAF-RME** (Chen et al., 2023): a corrected CEAF variant that scores
+  mentions against coreferent entities and leaves out the event type. It gives
+  the same systems far lower numbers (GTT: 50.2 under ours, 32.3 under CEAF-RME),
+  and newer papers, the LLM ones included, report only this one.
+- **Template detection F1** (Gantt et al., 2023): whether the right number and
+  types of templates are found. It is an error analysis, not a headline.
+
+**Under our metric** (test split, micro P / R / F1):
+
+| system | encoder / model | P | R | F1 | source |
+|---|---|---:|---:|---:|---|
+| TempGen | BART-large | 63.7 | 37.4 | 47.2 | Chen et al. 2023, Table 3 |
+| GTT | BERT-base | 61.7 | 42.4 | 50.2 | Du et al. 2021, Table 2 |
+| IterX | BERT-base | 52.3 | 51.1 | 51.7 | Chen et al. 2023, Table 3 |
+| **IterX** (best) | T5-large encoder | 60.9 | 46.9 | **53.0** | Chen et al. 2023, Table 3 |
+
+GTT's per-role test F1 (Du et al. 2021, Table 1), for comparison with our
+detail table: event type 67.4, PerpInd 44.0, PerpOrg 41.8, Target 32.4,
+Victim 54.1, Weapon 59.7.
+
+**Under CEAF-RME, where the LLMs are** (test split, F1): GTT 32.3, IterX
+(T5-large) 35.2. The ThinkTwice systems are fine-tuned reasoning LLMs. With
+greedy decoding, Qwen3-32B scores 36.0 and DeepSeek-R1-Distill-Llama-70B 28.5.
+Sampling candidates and choosing one with a trained reward model lifts them to
+**42.5** and 41.1, the best published result we found (Zubillaga et al. 2026,
+Table 2). No published MUC-4 result for a fine-tuned decoder of ≤ 8B turned up.
+
+**Where we stand.** Milestone 4's adapter reached 40.5 micro-F1
+(P 53.8 / R 32.5) at its last eval point. That is NF4 in-process, on the first
+50 dev documents. On the same 50 documents zero-shot scores 14.3 and 3-shot
+15.6. Like GTT we lose most on recall, and Target is our weakest role. The
+fp16 figure over all 200 dev documents is in `milestone-4-comparison.md`. The
+test-split figure that may stand beside this table comes in milestone 6.
+
+**Why the gap is not only the model.** Gantt et al. (2023) re-annotated 42
+MUC-4 documents and found that experts disagree on how to split incidents into
+templates. They also found that models barely split them at all. Merging each
+system's predicted templates into one per type costs about a point, but doing
+the same to the gold templates costs 12.7 (100 → 87.3). The noise ceiling is
+unknown (§4).
+
+References:
+
+- Du, Rush, Cardie. *Template Filling with Generative Transformers.* NAACL 2021.
+  <https://aclanthology.org/2021.naacl-main.70>
+- Chen, Gantt, Gu, Chen, White, Van Durme. *Iterative Document-level
+  Information Extraction via Imitation Learning.* EACL 2023.
+  <https://aclanthology.org/2023.eacl-main.136>
+- Gantt, Kriz, Chen, Vashishtha, White. *On Event Individuation for
+  Document-Level Information Extraction.* Findings of EMNLP 2023.
+  <https://aclanthology.org/2023.findings-emnlp.862>
+- Zubillaga, Sainz, Lopez de Lacalle, Agirre. *Do not be greedy, Think Twice:
+  Sampling and Selection for Document-level Information Extraction.*
+  AACL-IJCNLP 2026. <https://arxiv.org/abs/2601.18395>
