@@ -20,7 +20,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 # src layout without a top-level package: `data` and `eval` import directly (DESIGN §3)
 sources = ["src"]
-only-include = ["src/data", "src/eval.py", "src/generate.py", "src/train.py"]
+only-include = ["src/data", "src/bootstrap.py", "src/eval.py", "src/generate.py", "src/train.py"]
 
 [dependency-groups]
 dev = [

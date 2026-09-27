@@ -117,7 +117,7 @@ different metrics never go in one table.
   the same systems far lower numbers (GTT: 50.2 under ours, 32.3 under CEAF-RME),
   and newer papers, the LLM ones included, report only this one.
 - **Template detection F1** (Gantt et al., 2023): whether the right number and
-  types of templates are found. It is an error analysis, not a headline.
+  types of templates are found. It is an error analysis.
 
 **Under our metric** (test split, micro P / R / F1):
 
@@ -132,42 +132,29 @@ GTT's per-role test F1 (Du et al. 2021, Table 1), for comparison with our
 detail table: event type 67.4, PerpInd 44.0, PerpOrg 41.8, Target 32.4,
 Victim 54.1, Weapon 59.7.
 
-**Under CEAF-RME, where the LLMs are** (test split, F1): GTT 32.3, IterX
+**Under CEAF-RME** (test split, F1): GTT 32.3, IterX
 (T5-large) 35.2. The ThinkTwice systems are fine-tuned reasoning LLMs. With
 greedy decoding, Qwen3-32B scores 36.0 and DeepSeek-R1-Distill-Llama-70B 28.5.
 Sampling candidates and choosing one with a trained reward model lifts them to
 **42.5** and 41.1, the best published result we found (Zubillaga et al. 2026,
-Table 2). No published MUC-4 result for a fine-tuned decoder of ≤ 8B turned up.
+Table 2).
 
-**Where we stand.** The fine-tune's 44.5 (P 50.6 / R 39.7) on the 200 dev
+**Small fine-tuned decoders, on a different task** (added 2026-09-27; this
+note first said no such result had turned up). Olsen et al. (2026) fine-tune
+Qwen3 at 0.6B, 4B, 8B and 14B (LoRA r16, thinking disabled) and OLMo-3-7B on
+MUC-4 with the same 1,300 / 200 / 200 split. Their task is not ours. They keep
+only Attack and Bombing events and predict up to 20 fields per event, adding
+date, location, counts and categorical fields to the five span roles. They
+align events with CEAF-RME and report field-level exact-match micro-F1 and
+event-detection F1. Qwen3-4B scores 31.7 exact-match F1 (P 21.4 / R 61.1),
+0.6B 20.6, 8B 49.9 and 14B 50.0 (Table 3). None of these figures align with
+the tables above.
+
+**Where we stand.** The fine-tune's 44.5 (P 50.6 / R 39.7) on the 200 *dev*
 documents is 5.7 points below GTT and 8.5 below IterX, and like GTT it loses most
 on recall. Dev and test are different documents, so only milestone 6's
 test-split figure may stand beside it.
 
-**Why a 4B decoder need not beat BERT here.**
-
-- **Bigger decoders don't either.** Under CEAF-RME, fine-tuned greedy
-  Llama-70B (28.5) scores below GTT (32.3), and Qwen3-32B (36.0) only draws
-  level with IterX (35.2). MUC-4 is limited by its annotation conventions: what
-  counts as an incident, where a span ends, how incidents split into events.
-  Those are learned from 1,300 documents, and pretrained knowledge helps little.
-  Span extractors can only point into the text, so they learn the boundaries
-  directly.
-- **GTT trained much longer.** It fine-tuned every BERT weight for 18 epochs at
-  batch 1 and lr 5e-5 (Du et al. 2021, appendix): about 23,000 updates. We
-  trained a rank-16 adapter on an NF4 base for 3 epochs, 246 updates, and the
-  last eval point was still the best.
-- **The splits differ.** The test split is denser than dev, so dev and test
-  scores need not match in either direction:
-
-  | split | docs without events | events per doc | role entities per doc |
-  |---|---:|---:|---:|
-  | train | 46 % | 0.82 | 2.16 |
-  | dev | 42 % | 0.91 | 2.75 |
-  | test | 37 % | 1.00 | 3.06 |
-
-  Within dev alone, the same predictions score 37.5 on the first 50 documents
-  and 44.5 on all 200.
 
 **Why the gap is not only the model.** Gantt et al. (2023) re-annotated 42
 MUC-4 documents and found that experts disagree on how to split incidents into
@@ -186,6 +173,9 @@ References:
 - Gantt, Kriz, Chen, Vashishtha, White. *On Event Individuation for
   Document-Level Information Extraction.* Findings of EMNLP 2023.
   <https://aclanthology.org/2023.findings-emnlp.862>
+- Olsen, Velldal, Øvrelid. *MUC-4 Revisited: Document-level Event Analysis
+  Beyond Span-based Arguments.* LREC 2026, pages 7766–7780.
+  <https://aclanthology.org/2026.lrec-1.617.pdf>
 - Zubillaga, Sainz, Lopez de Lacalle, Agirre. *Do not be greedy, Think Twice:
   Sampling and Selection for Document-level Information Extraction.*
   AACL-IJCNLP 2026. <https://arxiv.org/abs/2601.18395>

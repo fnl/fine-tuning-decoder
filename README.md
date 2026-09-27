@@ -129,6 +129,53 @@ print(result["micro_avg"]["f1"], result["diagnostics"])
 salvages the complete events of a cut-off output; an output with no
 recoverable event is a parse failure and scores as `[]`.
 
+## Bootstrapping a score
+
+One score on 200 documents says little about how far it would move on 200
+others. `bootstrap` puts a percentile bootstrap interval around the micro-F1:
+it scores every document once, then 10,000 times draws the split's documents
+with replacement and recomputes the micro-F1 from their summed counts (the
+metric aligns events within each document, so the counts add up). It takes the
+same predictions and gold as `eval`:
+
+```bash
+uv run python -m bootstrap --pred outputs/qwen3-4b-r16-eval/test.jsonl \
+    --gold data/prepared/test.jsonl --below 53.0 50.2
+```
+
+```text
+micro F1 53.91%, 95% interval 48.84% to 58.89% (10000 resamples)
+resamples below 53.0: 36.0%
+resamples below 50.2: 7.3%
+```
+
+`--below` takes F1 scores in percent, such as published results, and prints the
+share of resamples under each. `--n`, `--seed` and `--level` set the number of
+resamples, the random seed (fixed at 0, so the output is reproducible) and the
+coverage of the interval.
+
+Read the interval as a lower bound on the uncertainty. It covers which
+documents are in the split, not training randomness, so it says nothing about
+another seed. The `--below` shares are not significance tests, because the
+published figures carry sampling noise of their own.
+
+Predictions generated on Colab are not on your machine, but every
+`eval --wandb` run logs its output directory as the artifact `<name>-<split>`:
+
+```bash
+uv run wandb artifact get flowing/muc4-event-extraction/qwen3-4b-r16-eval-test:latest \
+    --root outputs/qwen3-4b-r16-eval
+```
+
+From Python:
+
+```python
+from bootstrap import bootstrap_f1
+
+interval = bootstrap_f1(preds, golds)  # the same dicts that score() takes
+print(interval.point, interval.low, interval.high)
+```
+
 ## Running a baseline
 
 A baseline is one experiment YAML in `configs/` (`qwen3-4b-zero-shot`,
@@ -152,7 +199,8 @@ uv run python -m eval --config configs/always-empty.yaml \
 
 `--wandb` needs `WANDB_API_KEY` in the environment; without the flag the
 scorer prints the table as before. `generate --limit 5` runs the first five
-documents as a smoke test.
+documents as a smoke test, and `generate --split test` runs the test split
+instead of dev (writing `outputs/<name>/test.jsonl`).
 
 The two GPU baselines run on a free-tier T4 from the notebook:
 
@@ -291,6 +339,57 @@ push to the repo cannot change what was scored, and serves them as a LoRA.
 commit and the training run it scored. The YAML is written after training, and
 its generate → eval cell in `baselines.ipynb` lands in the same commit.
 
+## Reproducing the results
+
+The test-split table in [`docs/RESULTS.md`](docs/RESULTS.md) comes from four
+runs, each an `eval --wandb` run in `muc4-event-extraction`:
+
+| run | where | W&B run | test micro-F1 |
+|---|---|---|---:|
+| always-empty | local CPU | `kyngxn5r` | 0.0 |
+| zero-shot | Colab T4 | `1zg4m43j` | 21.4 |
+| 3-shot | Colab T4 | `dnnt66g6` | 20.0 |
+| QLoRA fine-tune | Colab T4 | `pqizcifd` | 53.9 |
+
+Score the test split only for results. Every choice (prompt, exemplars,
+config, adapter) was made on dev, and the test split was run once per system,
+after milestone 4 had fixed all of them.
+
+1. **Gold.** `uv run python -m data.prepare` writes
+   `data/prepared/test.jsonl` locally; the notebook loads the same split from
+   `fnl-es/muc4-chat`.
+2. **Always-empty**, locally:
+
+   ```bash
+   uv run python -m generate --config configs/always-empty.yaml --split test
+   uv run python -m eval --config configs/always-empty.yaml \
+       --pred outputs/always-empty/test.jsonl --gold data/prepared/test.jsonl --wandb
+   ```
+
+3. **The GPU runs**, from
+   [`baselines.ipynb`](https://colab.research.google.com/github/fnl/fine-tuning-decoder/blob/main/notebooks/baselines.ipynb)
+   on a T4. Do not use "Run all": it would also re-run the dev baselines and
+   the dev adapter evaluation and log them as new W&B runs. Instead:
+   1. Run the setup cells up to and including the gold cell, which writes
+      `dev.jsonl` and `test.jsonl`. The install cell restarts the runtime, so
+      run them a second time after it does.
+   2. Run the three cells under *Test split (milestone 6)*: zero-shot, 3-shot
+      and the fine-tune, about 5 to 10 minutes each.
+4. **The interval**: download the fine-tune's predictions and bootstrap them
+   (see *Bootstrapping a score*).
+
+The fine-tune row scores the published adapter, not a new one:
+`configs/qwen3-4b-r16-eval.yaml` pins `adapter_revision`, the commit its
+training run pushed. Retraining with `configs/qwen3-4b-r16.yaml` (see
+*Fine-tuning*) produces a different adapter with a different score; the
+spread between training seeds has not been measured.
+
+Decoding is greedy, so the same code, library versions and GPU type should
+reproduce the table closely. It has not been checked to be bit-exact: vLLM's
+batching can change floating-point results, and with them a few outputs. Set
+`REF` in the clone cell to the commit a run's `git_sha` records to run the
+exact code.
+
 ## Layout
 
 | path | purpose |
@@ -299,6 +398,7 @@ its generate → eval cell in `baselines.ipynb` lands in the same commit.
 | `src/generate.py` | render inputs (+ exemplars) → engine (vLLM [+ LoRA] \| in-process \| constant) → outputs JSONL + `meta.json` |
 | `src/train.py` | mask prompts → LoRA fine-tune → dev score at every eval point → adapter on the Hub; resume |
 | `src/eval.py` | GTT scorer port + diagnostics; CLI, optionally logging one W&B run |
+| `src/bootstrap.py` | percentile bootstrap interval of micro-F1 over documents; CLI |
 | `tests/` | the CPU-only test suite, including parity checks of the scorer against the original GTT evaluation |
 | `configs/` | experiment definitions: each baseline, fine-tune and adapter evaluation is one YAML |
 | `notebooks/` | running the GPU steps (baselines, adapter evaluation, training) on Colab |

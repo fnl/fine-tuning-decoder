@@ -31,24 +31,6 @@ payoff.
 Repo + thin notebook (rejected: notebook-only, for portability and
 diff-ability).
 
-```
-pyproject.toml          # uv; py >=3.11,<3.14 (Colab is 3.13); core deps CPU-installable
-configs/*.yaml          # one file per experiment
-src/
-  data/prepare.py       # download GTT JSON → chat JSONL → push to Hub
-  generate.py           # render inputs (+ exemplars) → engine (vLLM | in-process | constant) → outputs JSONL
-  train.py              # Unsloth + TRL SFTTrainer, config-driven
-  eval.py               # GTT scorer + diagnostics → W&B
-tests/                  # pytest, CPU only
-notebooks/baselines.ipynb  # thin: clone@ref, pip install, secrets, gold, then baselines and adapter evals
-notebooks/train.ipynb      # thin: clone@ref, pinned pip install, secrets, then 4B check, run, resume
-docs/DESIGN.md          # this file
-docs/milestone-4-comparison.md  # the fine-tune beside the baselines on the dev split
-docs/milestone-5-skipped.md     # why milestone 5 was dropped
-docs/TODO.md            # round two, as ideas arise
-docs/RESULTS.md         # written in milestone 6
-```
-
 GPU-only deps (`unsloth`, `trl`, `bitsandbytes`, `vllm`) are installed by the
 notebook, not `pyproject`, because Unsloth's Colab install line changes often.
 
